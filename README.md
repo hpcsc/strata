@@ -44,6 +44,12 @@ strata --trunk develop     # use a trunk other than origin/HEAD, origin/main or 
 `task demo` opens strata on a throwaway repository with two stacks. The script deletes the repository when
 you quit.
 
+## Version
+
+```sh
+strata version             # the tag of a release build, or the commit of any other build
+```
+
 ## Screen
 
 - The **Stack** panel shows the branches as a tree under the trunk. Each row shows the commits, files and

@@ -15,12 +15,10 @@ import (
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/hpcsc/strata/internal/ui"
+	"github.com/hpcsc/strata/internal/version"
 	"github.com/hpcsc/strata/internal/viewed"
 	"github.com/urfave/cli/v3"
 )
-
-// the release build sets version through -ldflags
-var version = "dev"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -34,7 +32,7 @@ func main() {
 func newCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "strata",
-		Version:   version,
+		Version:   version.Current(),
 		Usage:     "review stacked branches one at a time, each against the branch it sits on",
 		ArgsUsage: "[pattern...]",
 		Description: "Patterns are for-each-ref patterns that pick the branches, such as refs/heads/team/.\n" +
@@ -47,6 +45,16 @@ func newCommand() *cli.Command {
 			&cli.StringFlag{Name: "theme", Value: "nord", Usage: "chroma style for syntax highlighting"},
 		},
 		Action: run,
+		Commands: []*cli.Command{
+			{
+				Name:  "version",
+				Usage: "print the tag strata was built from, or its commit when it has no tag",
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					_, err := fmt.Fprintln(cmd.Root().Writer, version.Current())
+					return err
+				},
+			},
+		},
 	}
 }
 
