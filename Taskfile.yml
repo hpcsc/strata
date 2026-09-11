@@ -1,0 +1,47 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the strata binary into bin/
+    cmds:
+      - CGO_ENABLED=0 go build -o bin/strata ./cmd/strata
+
+  install:
+    desc: Build strata into ~/.local/bin
+    cmds:
+      - mkdir -p "$HOME/.local/bin"
+      - CGO_ENABLED=0 go build -o "$HOME/.local/bin/strata" ./cmd/strata
+
+  test:
+    desc: Run the unit tests with the race detector
+    cmds:
+      - go test -tags unit -race ./...
+
+  test:integration:
+    desc: Run the tests that build throwaway git repositories
+    cmds:
+      - go test -tags integration -race ./...
+
+  fmt:
+    desc: Format the Go source with gofmt
+    cmds:
+      - gofmt -w .
+
+  vet:
+    desc: Vet the unit and integration tagged packages
+    cmds:
+      - go vet -tags unit,integration ./...
+
+  check:
+    desc: Build, vet, and run every test (the full verification gate)
+    cmds:
+      - task: build
+      - task: vet
+      - task: test
+      - task: test:integration
+
+  demo:
+    desc: Build strata and open it on a throwaway repository with two stacks
+    deps: [build]
+    cmds:
+      - scripts/demo.sh

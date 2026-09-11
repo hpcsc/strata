@@ -1,0 +1,70 @@
+package git
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+type Repo struct {
+	dir string
+}
+
+func New(dir string) *Repo {
+	return &Repo{dir: dir}
+}
+
+func (r *Repo) Run(ctx context.Context, args ...string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := r.command(ctx, args)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
+	}
+	return stdout.String(), nil
+}
+
+// Check runs a git command that answers through its exit code: 0 is yes, 1 is no.
+func (r *Repo) Check(ctx context.Context, args ...string) (bool, error) {
+	var stderr bytes.Buffer
+	cmd := r.command(ctx, args)
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
+}
+
+func (r *Repo) command(ctx context.Context, args []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = r.dir
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat")
+	return cmd
+}
+
+type Error struct {
+	Args   []string
+	Stderr string
+	Err    error
+}
+
+func (e *Error) Error() string {
+	if e.Stderr != "" {
+		return fmt.Sprintf("git %s: %s", strings.Join(e.Args, " "), e.Stderr)
+	}
+	return fmt.Sprintf("git %s: %v", strings.Join(e.Args, " "), e.Err)
+}
+
+func (e *Error) Unwrap() error {
+	return e.Err
+}
