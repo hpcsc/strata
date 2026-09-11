@@ -53,6 +53,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
 		sources: sources,
 		cache:   newCache(ctx, sources),
 		stack:   newStackPanel(tree),
+		files:   newFilesPanel(sources.Viewed),
 		split:   true,
 	}
 	m.initial = m.sync()
@@ -156,13 +157,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case focusFiles:
 		switch key {
 		case "j", "down":
-			return m, m.moveFile(m.files.cursor + 1)
+			return m, m.moveRow(m.files.cursor + 1)
 		case "k", "up":
-			return m, m.moveFile(m.files.cursor - 1)
+			return m, m.moveRow(m.files.cursor - 1)
 		case "g", "home":
-			return m, m.moveFile(0)
+			return m, m.moveRow(0)
 		case "G", "end":
-			return m, m.moveFile(len(m.files.files) - 1)
+			return m, m.moveRow(len(m.files.rows) - 1)
+		case "o":
+			if m.files.toggleFolder() {
+				return m, m.sync()
+			}
 		case "enter", "l", "right":
 			m.focus = focusDiff
 		case "h", "left", "esc":
@@ -195,9 +200,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "N":
 			m.diff.previousHunk()
 		case "J":
-			return m, m.moveFile(m.files.cursor + 1)
+			return m, m.moveToFile(1)
 		case "K":
-			return m, m.moveFile(m.files.cursor - 1)
+			return m, m.moveToFile(-1)
 		case "h", "left", "esc":
 			if m.zoomed {
 				m.zoomed = false
@@ -220,10 +225,21 @@ func (m *Model) moveBranch(i int) tea.Cmd {
 	return m.sync()
 }
 
-func (m *Model) moveFile(i int) tea.Cmd {
+func (m *Model) moveRow(i int) tea.Cmd {
 	if !m.files.moveTo(i) {
 		return nil
 	}
+	return m.fileMoved()
+}
+
+func (m *Model) moveToFile(step int) tea.Cmd {
+	if !m.files.moveToFile(step) {
+		return nil
+	}
+	return m.fileMoved()
+}
+
+func (m *Model) fileMoved() tea.Cmd {
 	if f, ok := m.files.selected(); ok {
 		m.wantPath = f.Path
 	}
@@ -240,9 +256,11 @@ func (m *Model) toggleViewed() tea.Cmd {
 		return nil
 	}
 	if m.sources.Viewed.Has(f) {
-		return m.moveFile(m.files.cursor + 1)
+		m.files.passViewed(m.files.rows[m.files.cursor].file)
+	} else {
+		m.files.refresh()
 	}
-	return nil
+	return m.fileMoved()
 }
 
 func (m Model) reloadTree() tea.Cmd {
@@ -278,6 +296,9 @@ func (m *Model) sync() tea.Cmd {
 		m.filesKey = key
 	}
 
+	if next, ok := m.files.nextFile(); ok {
+		cmds = append(cmds, m.cache.requestPatch(b, next))
+	}
 	f, ok := m.files.selected()
 	if !ok {
 		notice := "no files changed"
@@ -288,9 +309,6 @@ func (m *Model) sync() tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 	cmds = append(cmds, m.cache.requestPatch(b, f))
-	if next := m.files.cursor + 1; next < len(m.files.files) {
-		cmds = append(cmds, m.cache.requestPatch(b, m.files.files[next]))
-	}
 	result, ready := m.cache.patch(b, f)
 	switch {
 	case !ready:
@@ -332,16 +350,56 @@ func (m Model) View() string {
 	}
 	footer := m.footer()
 	if m.zoomed {
-		return box(m.diffTitle(), m.diff.lines(), m.width, m.height-1, true) + "\n" + footer
+		title, lines := m.rightPanel()
+		return box(title, lines, m.width, m.height-1, true) + "\n" + footer
 	}
 	bottom := m.height - 1 - m.stackHeight
 	stackBox := box("Stack", m.stack.lines(m.width-2, m.focus == focusStack, m.progress), m.width, m.stackHeight, m.focus == focusStack)
-	filesBox := box(m.filesTitle(), m.files.lines(m.filesWidth-2, m.focus == focusFiles, m.sources.Viewed), m.filesWidth, bottom, m.focus == focusFiles)
-	right := box(m.diffTitle(), m.diff.lines(), m.width-m.filesWidth, bottom, m.focus == focusDiff)
-	if m.focus == focusStack {
-		right = box(m.branchTitle(), m.summaryLines(), m.width-m.filesWidth, bottom, false)
-	}
+	filesBox := box(m.filesTitle(), m.files.lines(m.filesWidth-2, m.focus == focusFiles), m.filesWidth, bottom, m.focus == focusFiles)
+	title, lines := m.rightPanel()
+	right := box(title, lines, m.width-m.filesWidth, bottom, m.focus == focusDiff)
 	return stackBox + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, filesBox, right) + "\n" + footer
+}
+
+// rightPanel shows the branch while the stack has the focus, then the
+// selected folder or file.
+func (m Model) rightPanel() (string, []string) {
+	if m.focus == focusStack {
+		return m.branchTitle(), m.summaryLines()
+	}
+	if r, ok := m.files.selectedFolder(); ok {
+		return "Folder · " + r.folder, m.folderLines(r)
+	}
+	return m.diffTitle(), m.diff.lines()
+}
+
+func (m Model) folderLines(r fileRow) []string {
+	files := m.files.filesIn(r.folder)
+	insertions, deletions, viewed, widest := 0, 0, 0, 0
+	for _, f := range files {
+		insertions, deletions = insertions+f.Insertions, deletions+f.Deletions
+		if m.sources.Viewed.Has(f) {
+			viewed++
+		}
+		widest = max(widest, lipgloss.Width(strings.TrimPrefix(f.Path, r.folder)))
+	}
+	summary := " " + plural(len(files), "file") + "  " + addedText.Render(fmt.Sprintf("+%d", insertions)) + " " +
+		deletedText.Render(fmt.Sprintf("-%d", deletions))
+	if viewed > 0 {
+		summary += "  " + viewedText.Render(fmt.Sprintf("✓ %d/%d viewed", viewed, len(files)))
+	}
+	lines := []string{" " + boldText.Render(r.folder), summary, ""}
+	for _, f := range files {
+		name := strings.TrimPrefix(f.Path, r.folder)
+		line := "   " + statusStyle(f.Status).Render(string(f.Status)) + "  " + name +
+			strings.Repeat(" ", widest-lipgloss.Width(name)) + "  " +
+			addedText.Render(fmt.Sprintf("+%d", f.Insertions)) + " " + deletedText.Render(fmt.Sprintf("-%d", f.Deletions))
+		if m.sources.Viewed.Has(f) {
+			line += "  " + viewedText.Render("✓")
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func (m Model) progress(b stack.Branch) string {
@@ -383,7 +441,8 @@ func (m Model) diffTitle() string {
 	if f.OldPath != "" && f.OldPath != f.Path {
 		title += " ← " + f.OldPath
 	}
-	title += fmt.Sprintf(" · %d/%d · %s", m.files.cursor+1, len(m.files.files), m.diff.position())
+	at, total := m.files.position()
+	title += fmt.Sprintf(" · %d/%d · %s", at, total, m.diff.position())
 	if m.sources.Viewed.Has(f) {
 		title += " · ✓ viewed"
 	}
@@ -426,7 +485,7 @@ func (m Model) footer() string {
 	}
 	hints := map[focus]string{
 		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
-		focusFiles: "j/k file · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys · q quit",
+		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
 		focusDiff:  "j/k scroll · ^d/^u page · n/N hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
 	}
 	return dimText.Render(" " + truncate(hints[m.focus], max(0, m.width-2)))
@@ -448,7 +507,8 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     enter        go to the files of the branch
 
   Files
-    j/k  g/G     move between files
+    j/k  g/G     move between files and folders
+    o            fold or unfold the folder, or the folder that holds the file
     enter        go to the diff
     ctrl+d/u     scroll the diff
     h  esc       back to the stack
@@ -458,6 +518,6 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     ctrl+d/u     scroll half a page (space and b: a full page)
     g/G          top or bottom
     n/N          next or previous hunk
-    J/K          next or previous file
+    J/K          next or previous file, past folded folders
     h  esc       back to the files (in zoom, esc ends the zoom first)
 `, "\n"), "\n")

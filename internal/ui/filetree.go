@@ -44,7 +44,7 @@ func (d *dirNode) joined() (*dirNode, string) {
 	return node, label + "/"
 }
 
-func (d *dirNode) walk(depth int, ordered *[]diff.File, rows *[]fileRow) {
+func (d *dirNode) walk(depth int, prefix string, ordered *[]diff.File, rows *[]fileRow) {
 	names := make([]string, 0, len(d.dirs))
 	for name := range d.dirs {
 		names = append(names, name)
@@ -52,8 +52,8 @@ func (d *dirNode) walk(depth int, ordered *[]diff.File, rows *[]fileRow) {
 	sort.Strings(names)
 	for _, name := range names {
 		node, label := d.dirs[name].joined()
-		*rows = append(*rows, fileRow{depth: depth, label: label, file: -1})
-		node.walk(depth+1, ordered, rows)
+		*rows = append(*rows, fileRow{depth: depth, label: label, folder: prefix + label, file: -1})
+		node.walk(depth+1, prefix+label, ordered, rows)
 	}
 	files := append([]diff.File(nil), d.files...)
 	sort.Slice(files, func(i, j int) bool { return path.Base(files[i].Path) < path.Base(files[j].Path) })
@@ -72,7 +72,7 @@ func treeLayout(files []diff.File) ([]diff.File, []fileRow) {
 	}
 	var ordered []diff.File
 	var rows []fileRow
-	root.walk(0, &ordered, &rows)
+	root.walk(0, "", &ordered, &rows)
 	return ordered, rows
 }
 

@@ -62,10 +62,13 @@ from `task install`, is not a release, so `strata update` does not replace it un
 - The **Stack** panel shows the branches as a tree under the trunk. Each row shows the commits, files and
   lines that the branch adds to its parent. "1 behind parent" tells you that the parent has a commit that
   the branch does not have, so the branch needs a restack.
-- The **Files** panel shows the files that the selected branch changes, under their directories. A chain of
-  directories that each hold only one directory shows on one row. `t` shows the files as a list of paths.
+- The **Files** panel shows the files that the selected branch changes, under their folders. A chain of
+  folders that each hold only one folder shows on one row. `o` folds a folder, and a folder folds by itself
+  when you have viewed every file in it. A folder that you unfold with `o` stays open. `t` shows the files
+  as a list of paths.
 - The **Diff** panel shows the selected file, side by side or unified, with syntax colours and marks on the
-  changed words. When the Stack panel has the focus, this panel shows the commits of the branch.
+  changed words. When the Stack panel has the focus, this panel shows the commits of the branch. When a
+  folder is selected, it shows the files in the folder and their line counts.
 
 ## Keys
 
@@ -82,13 +85,14 @@ from `task install`, is not a release, so `strata update` does not replace it un
 | | `q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |
-| Files | `j` `k` `g` `G` | Move between files. |
+| Files | `j` `k` `g` `G` | Move between files and folders. |
+| | `o` | Fold or unfold the folder. On a file, fold the folder that holds it. |
 | | `enter` | Go to the diff. |
 | | `ctrl+d` `ctrl+u` | Scroll the diff. |
 | Diff | `j` `k` | Scroll one line. |
 | | `ctrl+d` `ctrl+u` | Scroll half a page. `space` and `b` scroll a full page. |
 | | `n` `N` | Go to the next or previous hunk. |
-| | `J` `K` | Go to the next or previous file. |
+| | `J` `K` | Go to the next or previous file. The files in a folded folder do not count. |
 | | `esc` | Go back to the files. In zoom, `esc` ends the zoom first. |
 
 ## Parents

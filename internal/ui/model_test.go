@@ -67,7 +67,7 @@ func (m memoryViewed) Toggle(f diff.File) error {
 
 func TestModel(t *testing.T) {
 	file := func(path string) diff.File {
-		return diff.File{Path: path, Status: diff.Modified, OldBlob: "old-" + path, NewBlob: "new-" + path}
+		return diff.File{Path: path, Status: diff.Modified, OldBlob: "old-" + path, NewBlob: "new-" + path, Insertions: 3, Deletions: 1}
 	}
 	stackOf := func() (stack.Tree, map[string][]diff.File) {
 		tree := stack.Tree{Trunk: "origin/main", Current: "events", Branches: []stack.Branch{
@@ -113,6 +113,17 @@ func TestModel(t *testing.T) {
 		return modelSources{tree: tree, viewed: memoryViewed{}, files: map[string][]diff.File{"nested": {
 			file("README.md"), file("common/modules/a/one.go"), file("common/modules/a/two.go"), file("common/modules/b/three.go"),
 		}}}
+	}
+	twoBranches := func(t *testing.T) modelSources {
+		t.Helper()
+		tree := stack.Tree{Trunk: "origin/main", Current: "first", Branches: []stack.Branch{
+			{Name: "first", Parent: "origin/main", Base: "b0"},
+			{Name: "second", Parent: "first", Base: "b1", Level: 1},
+		}}
+		return modelSources{tree: tree, viewed: memoryViewed{}, files: map[string][]diff.File{
+			"first":  {file("common/modules/a/one.go"), file("common/modules/a/two.go"), file("common/modules/b/three.go")},
+			"second": {file("common/modules/a/one.go"), file("common/modules/c/four.go")},
+		}}
 	}
 	requireInOrder := func(t *testing.T, view string, texts ...string) {
 		t.Helper()
@@ -242,10 +253,17 @@ func TestModel(t *testing.T) {
 			requireInOrder(t, view, "common/modules/", "a/", "one.go", "two.go", "b/", "three.go", "README.md")
 		})
 
-		t.Run("moves through the files in the order the tree shows them", func(t *testing.T) {
-			m := press(startWith(nestedFiles(t)), "enter", "j", "j", "j")
+		t.Run("J moves through the files in the order the tree shows them", func(t *testing.T) {
+			m := press(startWith(nestedFiles(t)), "enter", "enter", "J", "J", "J")
 
 			require.Contains(t, screen(m), "README.md · 4/4")
+		})
+
+		t.Run("j stops on a folder, and the right panel then sums up that folder", func(t *testing.T) {
+			view := screen(press(startWith(nestedFiles(t)), "enter", "j", "j"))
+
+			require.Contains(t, view, "Folder · common/modules/b/")
+			require.Contains(t, view, "1 file  +3 -1")
 		})
 
 		t.Run("t shows the files as a list of paths", func(t *testing.T) {
@@ -253,6 +271,57 @@ func TestModel(t *testing.T) {
 
 			require.Contains(t, view, "common/modules/a/one.go")
 			require.NotContains(t, view, "  b/")
+		})
+	})
+
+	t.Run("fold", func(t *testing.T) {
+		t.Run("o on a folder hides its files, and o again shows them", func(t *testing.T) {
+			folded := press(startWith(nestedFiles(t)), "enter", "j", "j", "o")
+
+			require.Contains(t, screen(folded), "▸ b/  1 file")
+			require.Contains(t, screen(press(folded, "o")), "▾ b/")
+		})
+
+		t.Run("o on a file folds the folder that holds it and selects that folder", func(t *testing.T) {
+			view := screen(press(startWith(nestedFiles(t)), "enter", "o"))
+
+			require.Contains(t, view, "▸ a/  2 files")
+			require.Contains(t, view, "Folder · common/modules/a/")
+		})
+
+		t.Run("J passes over the files inside a folded folder", func(t *testing.T) {
+			m := press(startWith(nestedFiles(t)), "enter", "o", "enter", "J")
+
+			require.Contains(t, screen(m), "three.go · 3/4")
+		})
+
+		t.Run("a folder folds by itself once every file in it is viewed, and the cursor moves past it", func(t *testing.T) {
+			viewed := memoryViewed{}
+			src := nestedFiles(t)
+			src.viewed = viewed
+
+			view := screen(press(startWith(src), "enter", "v", "v"))
+
+			require.True(t, viewed["common/modules/a/two.go"])
+			require.Contains(t, view, "▸ a/  2 files")
+			require.Contains(t, view, "three.go · 3/4")
+		})
+
+		t.Run("a folder folded on one branch stays folded on the next branch that changes it", func(t *testing.T) {
+			m := press(startWith(twoBranches(t)), "enter", "o", "]")
+
+			view := screen(m)
+			require.Contains(t, view, "Files · second")
+			require.Contains(t, view, "▸ a/  1 file")
+		})
+
+		t.Run("switching to a branch with the selected file inside a folded folder unfolds that folder", func(t *testing.T) {
+			m := press(startWith(twoBranches(t)), "enter", "]", "o", "[")
+
+			view := screen(m)
+			require.Contains(t, view, "Files · first")
+			require.Contains(t, view, "▾ a/")
+			require.Contains(t, view, "one.go · 1/3")
 		})
 	})
 
