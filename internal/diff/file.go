@@ -18,8 +18,10 @@ type File struct {
 	Status  Status
 	// OldBlob and NewBlob are git object IDs; a side the file does not exist
 	// on has no blob.
-	OldBlob string
-	NewBlob string
+	OldBlob    string
+	NewBlob    string
+	Insertions int
+	Deletions  int
 }
 
 func (f File) Paths() []string {

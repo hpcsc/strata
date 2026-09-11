@@ -49,6 +49,23 @@ func TestLoader(t *testing.T) {
 			require.Equal(t, "old-name.txt", renamed.OldPath)
 		})
 
+		t.Run("counts the lines each file adds and deletes, including a renamed file", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.Commit("keep.txt", "one\ntwo\n", "Add keep")
+			repo.Commit("old-name.txt", "a\nb\nc\nd\ne\nf\n", "Add old-name")
+			repo.SwitchNew("branch")
+			repo.Write("keep.txt", "one\nthree\nfour\n")
+			repo.Git("mv", "old-name.txt", "new-name.txt")
+			repo.Commit("new-name.txt", "a\nb\nc\nd\ne\nf\ng\n", "Change keep and rename")
+
+			files, err := diff.NewLoader(git.New(repo.Dir)).Files(ctx, "main", "branch")
+
+			require.NoError(t, err)
+			keep, renamed := fileNamed(t, files, "keep.txt"), fileNamed(t, files, "new-name.txt")
+			require.Equal(t, [2]int{2, 1}, [2]int{keep.Insertions, keep.Deletions})
+			require.Equal(t, [2]int{1, 0}, [2]int{renamed.Insertions, renamed.Deletions})
+		})
+
 		t.Run("gives an added file no old blob and a deleted file no new blob", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.Commit("gone.txt", "gone\n", "Add gone")

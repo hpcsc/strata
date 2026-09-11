@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
@@ -24,11 +25,23 @@ func NewLoader(git runner) *Loader {
 }
 
 func (l *Loader) Files(ctx context.Context, base, branch string) ([]File, error) {
-	out, err := l.git.Run(ctx, "diff", "--no-color", "--no-ext-diff", "--raw", "-z", "--no-abbrev", "-M", base, branch)
+	raw, err := l.git.Run(ctx, "diff", "--no-color", "--no-ext-diff", "--raw", "-z", "--no-abbrev", "-M", base, branch)
 	if err != nil {
 		return nil, err
 	}
-	return parseRaw(out)
+	files, err := parseRaw(raw)
+	if err != nil {
+		return nil, err
+	}
+	numstat, err := l.git.Run(ctx, "diff", "--no-color", "--no-ext-diff", "--numstat", "-z", "-M", base, branch)
+	if err != nil {
+		return nil, err
+	}
+	counts := parseNumstat(numstat)
+	for i := range files {
+		files[i].Insertions, files[i].Deletions = counts[files[i].Path][0], counts[files[i].Path][1]
+	}
+	return files, nil
 }
 
 func (l *Loader) Patch(ctx context.Context, base, branch string, f File) (Patch, error) {
@@ -123,6 +136,28 @@ func parseRaw(out string) ([]File, error) {
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// parseNumstat reads git diff --numstat -z. A rename leaves the path field
+// empty and puts the old and new paths in the next two fields.
+func parseNumstat(out string) map[string][2]int {
+	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
+	counts := map[string][2]int{}
+	for i := 0; i < len(fields); i++ {
+		parts := strings.SplitN(fields[i], "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		path := parts[2]
+		if path == "" && i+2 < len(fields) {
+			path = fields[i+2]
+			i += 2
+		}
+		insertions, _ := strconv.Atoi(parts[0])
+		deletions, _ := strconv.Atoi(parts[1])
+		counts[path] = [2]int{insertions, deletions}
+	}
+	return counts
 }
 
 func hunk(fragment *gitdiff.TextFragment) Hunk {
