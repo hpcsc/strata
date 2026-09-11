@@ -44,11 +44,18 @@ strata --trunk develop     # use a trunk other than origin/HEAD, origin/main or 
 `task demo` opens strata on a throwaway repository with two stacks. The script deletes the repository when
 you quit.
 
-## Version
+## Version and update
 
 ```sh
 strata version             # the tag of a release build, or the commit of any other build
+strata update              # install the latest release when it is newer
+strata update --check      # only tell you when a newer release exists
 ```
+
+`strata update` downloads the archive for your platform from the latest GitHub release, checks it against
+the `checksums.txt` of that release, and then replaces the strata binary. A build from a commit, for example
+from `task install`, is not a release, so `strata update` does not replace it unless you add `--force`.
+`GITHUB_TOKEN` or `GH_TOKEN` gives access to a private repository.
 
 ## Screen
 

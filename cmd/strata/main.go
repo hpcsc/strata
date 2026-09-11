@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
+	"github.com/hpcsc/strata/internal/release"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/hpcsc/strata/internal/ui"
@@ -19,6 +24,8 @@ import (
 	"github.com/hpcsc/strata/internal/viewed"
 	"github.com/urfave/cli/v3"
 )
+
+const releaseRepository = "hpcsc/strata"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -53,6 +60,15 @@ func newCommand() *cli.Command {
 					_, err := fmt.Fprintln(cmd.Root().Writer, version.Current())
 					return err
 				},
+			},
+			{
+				Name:  "update",
+				Usage: "replace strata with the latest release when that release is newer",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "check", Usage: "only report whether a newer release exists"},
+					&cli.BoolFlag{Name: "force", Usage: "replace a build that is not a release, such as one built from a commit"},
+				},
+				Action: update,
 			},
 		},
 	}
@@ -104,6 +120,52 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		Viewed:      marks,
 	})
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	return err
+}
+
+func update(ctx context.Context, cmd *cli.Command) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if executable, err = filepath.EvalSymlinks(executable); err != nil {
+		return err
+	}
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
+	}
+	api := os.Getenv("GITHUB_API_URL")
+	if api == "" {
+		api = "https://api.github.com"
+	}
+	client := release.NewClient(&http.Client{Timeout: 2 * time.Minute}, api, releaseRepository, token)
+	updater := release.NewUpdater(client, version.Current(), runtime.GOOS+"-"+runtime.GOARCH, executable)
+	check, err := updater.Check(ctx)
+	if errors.Is(err, release.ErrNoRelease) {
+		return fmt.Errorf("found no release of %s: it has none yet, or it is private and GITHUB_TOKEN is not set", releaseRepository)
+	}
+	if err != nil {
+		return err
+	}
+
+	out := cmd.Root().Writer
+	switch {
+	case !version.IsRelease(check.Current) && !cmd.Bool("force"):
+		_, err = fmt.Fprintf(out, "strata %s is not a release build. The latest release is %s.\n"+
+			"Run strata update --force to replace this build with it.\n", check.Current, check.Latest.Tag)
+		return err
+	case version.IsRelease(check.Current) && !check.Newer:
+		_, err = fmt.Fprintf(out, "strata %s is the latest release.\n", check.Current)
+		return err
+	case cmd.Bool("check"):
+		_, err = fmt.Fprintf(out, "strata %s is available. This is %s. Run strata update to install it.\n", check.Latest.Tag, check.Current)
+		return err
+	}
+	if err := updater.Install(ctx, check.Latest); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "Updated strata from %s to %s at %s.\n", check.Current, check.Latest.Tag, executable)
 	return err
 }
 
