@@ -121,7 +121,8 @@ strata finds the parent of each branch in this order:
 3. When neither test finds a parent, the branch sits on the trunk.
 
 The diff of a branch starts at the newest commit that the branch shares with its parent. Remote branches
-have no reflog of their creation, so `--remote` uses only the first test.
+have no reflog of their creation, so `--remote` uses only the first test. [docs/stack.md](docs/stack.md)
+gives the rules in full, with diagrams.
 
 ## Viewed files
 
@@ -140,7 +141,7 @@ task test:e2e:local     # the same tests on this machine, without Docker
 
 The end-to-end tests in `e2e/` run the strata binary in a terminal with
 [tuistory](https://www.npmjs.com/package/tuistory). Each test builds its own git repository with a stack,
-presses keys, and reads the screen.
+presses keys, and reads the screen. [docs/e2e-tests.md](docs/e2e-tests.md) tells how they work.
 
 GitHub Actions runs `task check` and `task test:e2e` on each push to a branch. A tag such as `v0.1.0` starts the release
 workflow. The workflow runs the same checks, then goreleaser builds archives for macOS and Linux (amd64
