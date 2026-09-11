@@ -119,8 +119,14 @@ file before and after the change. A new change to the file therefore clears the 
 task check              # build, vet, unit tests and integration tests
 task test               # unit tests only
 task test:integration   # tests that build throwaway git repositories
+task test:e2e           # end-to-end tests in Docker, as CI runs them
+task test:e2e:local     # the same tests on this machine, without Docker
 ```
 
-GitHub Actions runs `task check` on each push to a branch. A tag such as `v0.1.0` starts the release
+The end-to-end tests in `e2e/` run the strata binary in a terminal with
+[tuistory](https://www.npmjs.com/package/tuistory). Each test builds its own git repository with a stack,
+presses keys, and reads the screen.
+
+GitHub Actions runs `task check` and `task test:e2e` on each push to a branch. A tag such as `v0.1.0` starts the release
 workflow. The workflow runs the same checks, then goreleaser builds archives for macOS and Linux (amd64
 and arm64) and publishes them to a GitHub release.

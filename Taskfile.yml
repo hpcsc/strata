@@ -1,5 +1,8 @@
 version: '3'
 
+vars:
+  E2E_TAG: v0.1.0
+
 tasks:
   build:
     desc: Build the strata binary into bin/
@@ -21,6 +24,20 @@ tasks:
     desc: Run the tests that build throwaway git repositories
     cmds:
       - go test -tags integration -race ./...
+
+  test:e2e:
+    desc: Run the end-to-end tests in Docker against a fresh strata binary, as CI does
+    cmds:
+      - docker build -f e2e/Dockerfile --build-arg BUILD_TAG={{.E2E_TAG}} -t strata-e2e .
+      - docker container run --rm strata-e2e
+
+  test:e2e:local:
+    desc: Run the end-to-end tests on this machine without Docker (needs node and git 2.41 or later)
+    dir: e2e
+    cmds:
+      - CGO_ENABLED=0 go build -ldflags "-X github.com/hpcsc/strata/internal/version.releaseTag={{.E2E_TAG}}" -o ../bin/strata-e2e ../cmd/strata
+      - npm ci
+      - EXECUTABLE=../bin/strata-e2e BUILD_TAG={{.E2E_TAG}} npx vitest run
 
   fmt:
     desc: Format the Go source with gofmt
