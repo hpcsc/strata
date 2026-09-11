@@ -101,3 +101,7 @@ task check              # build, vet, unit tests and integration tests
 task test               # unit tests only
 task test:integration   # tests that build throwaway git repositories
 ```
+
+GitHub Actions runs `task check` on each push to a branch. A tag such as `v0.1.0` starts the release
+workflow. The workflow runs the same checks, then goreleaser builds archives for macOS and Linux (amd64
+and arm64) and publishes them to a GitHub release.

@@ -1,0 +1,26 @@
+version: 2
+project_name: strata
+builds:
+  - main: ./cmd/strata
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+archives:
+  - formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+checksum:
+  name_template: checksums.txt
+changelog:
+  sort: asc
+release:
+  github:
+    owner: hpcsc
+    name: strata

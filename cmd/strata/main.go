@@ -19,6 +19,9 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+// the release build sets version through -ldflags
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -31,6 +34,7 @@ func main() {
 func newCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "strata",
+		Version:   version,
 		Usage:     "review stacked branches one at a time, each against the branch it sits on",
 		ArgsUsage: "[pattern...]",
 		Description: "Patterns are for-each-ref patterns that pick the branches, such as refs/heads/team/.\n" +
