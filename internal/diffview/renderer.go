@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/mattn/go-runewidth"
 )
@@ -15,28 +16,36 @@ type renderer struct {
 	src         Source
 	width       int
 	numberWidth int
+	find        search.Query
 }
 
-func newRenderer(src Source, width int) renderer {
+func newRenderer(src Source, width int, find search.Query) renderer {
 	widest := 1
 	for _, h := range src.Patch.Hunks {
 		for _, l := range h.Lines {
 			widest = max(widest, len(strconv.Itoa(max(l.OldNumber, l.NewNumber))))
 		}
 	}
-	return renderer{src: src, width: width, numberWidth: widest}
+	return renderer{src: src, width: width, numberWidth: widest, find: find}
 }
 
-func (r renderer) unified(h diff.Hunk) []string {
+// unified returns the rows of a hunk, and the index of each row that starts
+// a line with a match.
+func (r renderer) unified(h diff.Hunk) ([]string, []int) {
 	marks := changedWords(h.Lines)
 	contentWidth := r.width - ansi.StringWidth(r.unifiedGutter(diff.Line{}, true))
 	var out []string
+	var matches []int
 	for i, l := range h.Lines {
-		for k, row := range wrap(layOut(l.Text, r.spans(l), marks[i]), contentWidth) {
+		found := r.found(l)
+		if len(found) > 0 {
+			matches = append(matches, len(out))
+		}
+		for k, row := range wrap(layOut(l.Text, r.spans(l), marks[i], found), contentWidth) {
 			out = append(out, r.unifiedGutter(l, k == 0)+paint(row, contentWidth, l.Kind))
 		}
 	}
-	return out
+	return out, matches
 }
 
 func (r renderer) unifiedGutter(l diff.Line, first bool) string {
@@ -50,18 +59,37 @@ func (r renderer) unifiedGutter(l diff.Line, first bool) string {
 		paintText(sign+" ", style{fg: signColor, bg: lineBackground(l.Kind)})
 }
 
-func (r renderer) split(h diff.Hunk) []string {
+// split returns the rows of a hunk side by side, and the index of each row
+// that starts a pair of lines with a match on either side.
+func (r renderer) split(h diff.Hunk) ([]string, []int) {
 	marks := changedWords(h.Lines)
 	leftWidth := (r.width - 1) / 2
 	rightWidth := r.width - 1 - leftWidth
 	separator := paintText("│", style{fg: separatorColor})
 	var out []string
+	var matches []int
 	for _, pair := range sideBySide(h.Lines) {
+		if r.pairFound(h.Lines, pair) {
+			matches = append(matches, len(out))
+		}
 		left, leftFill := r.sideRows(h.Lines, pair.left, marks, leftWidth, true)
 		right, rightFill := r.sideRows(h.Lines, pair.right, marks, rightWidth, false)
 		for k := 0; k < max(len(left), len(right)); k++ {
 			out = append(out, rowOrFill(left, k, leftWidth, leftFill)+separator+rowOrFill(right, k, rightWidth, rightFill))
 		}
+	}
+	return out, matches
+}
+
+func (r renderer) pairFound(lines []diff.Line, pair sidePair) bool {
+	return (pair.left >= 0 && len(r.found(lines[pair.left])) > 0) ||
+		(pair.right >= 0 && len(r.found(lines[pair.right])) > 0)
+}
+
+func (r renderer) found(l diff.Line) []diff.Range {
+	var out []diff.Range
+	for _, m := range r.find.Ranges(l.Text) {
+		out = append(out, diff.Range{Start: m.Start, End: m.End})
 	}
 	return out
 }
@@ -79,7 +107,7 @@ func (r renderer) sideRows(lines []diff.Line, index int, marks [][]diff.Range, w
 	}
 	contentWidth := width - r.numberWidth - 1
 	var out []string
-	for k, row := range wrap(layOut(l.Text, r.spans(l), marks[index]), contentWidth) {
+	for k, row := range wrap(layOut(l.Text, r.spans(l), marks[index], r.found(l)), contentWidth) {
 		label := ""
 		if k == 0 {
 			label = number(n)
@@ -173,6 +201,9 @@ func paint(row []cell, width int, kind diff.LineKind) string {
 		}
 		if c.marked {
 			s.bg = word
+		}
+		if c.found {
+			s.fg, s.bg = foundText, foundBackground
 		}
 		if i == 0 || s != last {
 			b.WriteString(sgr(s))

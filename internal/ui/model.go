@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
 )
 
@@ -44,6 +45,7 @@ type Model struct {
 	filesKey string
 	// wantPath is the file to select when the next branch's files arrive.
 	wantPath string
+	prompt   prompt
 	initial  tea.Cmd
 }
 
@@ -97,12 +99,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.status = ""
+	if m.prompt.open {
+		return m.promptKey(msg)
+	}
 
 	switch key {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 	case "?":
 		m.help = true
+		return m, nil
+	case "/":
+		m.prompt.start(m.focus, m.query(m.focus).String())
 		return m, nil
 	case "tab":
 		if !m.zoomed {
@@ -115,9 +123,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "[":
-		return m, m.moveBranch(m.stack.cursor - 1)
+		return m, m.stepBranch(-1)
 	case "]":
-		return m, m.moveBranch(m.stack.cursor + 1)
+		return m, m.stepBranch(1)
 	case "s":
 		m.split = !m.split
 		m.diff.render(m.split)
@@ -144,13 +152,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case focusStack:
 		switch key {
 		case "j", "down":
-			return m, m.moveBranch(m.stack.cursor + 1)
+			return m, m.stepBranch(1)
 		case "k", "up":
-			return m, m.moveBranch(m.stack.cursor - 1)
+			return m, m.stepBranch(-1)
 		case "g", "home":
-			return m, m.moveBranch(0)
+			return m, m.branchAtRow(0)
 		case "G", "end":
-			return m, m.moveBranch(len(m.stack.tree.Branches) - 1)
+			return m, m.branchAtRow(len(m.stack.shown) - 1)
+		case "esc":
+			return m, m.setQuery(focusStack, "")
 		case "enter", "l", "right":
 			m.focus = focusFiles
 		}
@@ -170,7 +180,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", "l", "right":
 			m.focus = focusDiff
-		case "h", "left", "esc":
+		case "esc":
+			if !m.files.filter.Empty() {
+				return m, m.setQuery(focusFiles, "")
+			}
+			m.focus = focusStack
+		case "h", "left":
 			m.focus = focusStack
 		case "ctrl+d":
 			m.diff.scroll(m.diff.height / 2)
@@ -196,14 +211,32 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "G", "end":
 			m.diff.toBottom()
 		case "n":
-			m.diff.nextHunk()
+			if m.diff.find.Empty() {
+				m.diff.nextHunk()
+			} else {
+				m.diff.nextMatch()
+			}
 		case "N":
-			m.diff.previousHunk()
+			if m.diff.find.Empty() {
+				m.diff.previousHunk()
+			} else {
+				m.diff.previousMatch()
+			}
 		case "J":
 			return m, m.moveToFile(1)
 		case "K":
 			return m, m.moveToFile(-1)
-		case "h", "left", "esc":
+		case "esc":
+			if !m.diff.find.Empty() {
+				return m, m.setQuery(focusDiff, "")
+			}
+			if m.zoomed {
+				m.zoomed = false
+				m.layout()
+			} else {
+				m.focus = focusFiles
+			}
+		case "h", "left":
 			if m.zoomed {
 				m.zoomed = false
 				m.layout()
@@ -215,14 +248,70 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) moveBranch(i int) tea.Cmd {
-	if f, ok := m.files.selected(); ok {
-		m.wantPath = f.Path
-	}
-	if !m.stack.moveTo(i) {
+func (m *Model) stepBranch(by int) tea.Cmd {
+	m.keepFile()
+	if !m.stack.step(by) {
 		return nil
 	}
 	return m.sync()
+}
+
+func (m *Model) branchAtRow(row int) tea.Cmd {
+	m.keepFile()
+	if !m.stack.moveToRow(row) {
+		return nil
+	}
+	return m.sync()
+}
+
+// keepFile remembers the selected file, to select it again on the next
+// branch when that branch changes it.
+func (m *Model) keepFile() {
+	if f, ok := m.files.selected(); ok {
+		m.wantPath = f.Path
+	}
+}
+
+func (m Model) promptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	changed, cancelled := m.prompt.edit(msg)
+	switch {
+	case cancelled:
+		return m, m.setQuery(m.prompt.target, "")
+	case changed:
+		return m, m.setQuery(m.prompt.target, m.prompt.text)
+	}
+	return m, nil
+}
+
+func (m Model) query(target focus) search.Query {
+	switch target {
+	case focusStack:
+		return m.stack.filter
+	case focusFiles:
+		return m.files.filter
+	default:
+		return m.diff.find
+	}
+}
+
+// setQuery filters the stack or the files, or finds text in the diff,
+// depending on target.
+func (m *Model) setQuery(target focus, text string) tea.Cmd {
+	query := search.New(text)
+	switch target {
+	case focusStack:
+		m.keepFile()
+		if m.stack.setFilter(query) {
+			return m.sync()
+		}
+	case focusFiles:
+		if m.files.setFilter(query) {
+			return m.fileMoved()
+		}
+	default:
+		m.diff.setFind(query, m.split)
+	}
+	return nil
 }
 
 func (m *Model) moveRow(i int) tea.Cmd {
@@ -480,6 +569,9 @@ func (m Model) summaryLines() []string {
 }
 
 func (m Model) footer() string {
+	if m.prompt.open {
+		return m.prompt.view(m.searchResult(m.prompt.target))
+	}
 	if m.status != "" {
 		return errorText.Render(" " + m.status)
 	}
@@ -488,7 +580,26 @@ func (m Model) footer() string {
 		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
 		focusDiff:  "j/k scroll · ^d/^u page · n/N hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
 	}
-	return dimText.Render(" " + truncate(hints[m.focus], max(0, m.width-2)))
+	line := hints[m.focus]
+	if query := m.query(m.focus); !query.Empty() {
+		line = "/" + query.String() + " · " + m.searchResult(m.focus) + " · esc clear · " +
+			strings.Replace(line, "n/N hunk · ", "", 1)
+	}
+	return dimText.Render(" " + truncate(line, max(0, m.width-2)))
+}
+
+func (m Model) searchResult(target focus) string {
+	if m.query(target).Empty() {
+		return ""
+	}
+	switch target {
+	case focusStack:
+		return fmt.Sprintf("%d of %d branches", m.stack.matching(), len(m.stack.tree.Branches))
+	case focusFiles:
+		return fmt.Sprintf("%d of %d files", m.files.matching(), len(m.files.files))
+	default:
+		return m.diff.findStatus() + " · n/N match"
+	}
 }
 
 var helpLines = strings.Split(strings.TrimPrefix(`
@@ -499,6 +610,8 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     z            diff on the full screen
     v            mark the file viewed, then go to the next file
     t            files as a tree or as a list of paths
+    /            search: filter the stack or the files, or find text in the diff
+    esc          clear the search of the panel
     r            read the branches again
     q            quit
 
@@ -517,7 +630,7 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     j/k          scroll one line
     ctrl+d/u     scroll half a page (space and b: a full page)
     g/G          top or bottom
-    n/N          next or previous hunk
+    n/N          next or previous hunk, or match while a search is on
     J/K          next or previous file, past folded folders
     h  esc       back to the files (in zoom, esc ends the zoom first)
 `, "\n"), "\n")

@@ -35,6 +35,8 @@ var (
 	deletedWord     = rgb{112, 46, 56, true}
 	noteColor       = rgb{136, 192, 208, true}
 	emptySideFiller = rgb{35, 39, 47, true}
+	foundText       = rgb{46, 52, 64, true}
+	foundBackground = rgb{235, 203, 139, true}
 )
 
 const reset = "\x1b[0m"

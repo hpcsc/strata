@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/diffview"
+	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/stretchr/testify/require"
 )
@@ -146,6 +147,30 @@ func TestRender(t *testing.T) {
 			page := diffview.Render(diffview.Source{Patch: patch}, diffview.Options{Width: 40})
 
 			require.Equal(t, []int{0, 3}, page.Hunks)
+		})
+
+		t.Run("records the rows that hold a match of the find, in both layouts", func(t *testing.T) {
+			patch := diff.Patch{Hunks: []diff.Hunk{{Lines: []diff.Line{
+				{Kind: diff.Context, Text: "store := newStore()", OldNumber: 1, NewNumber: 1},
+				{Kind: diff.Context, Text: "other", OldNumber: 2, NewNumber: 2},
+				{Kind: diff.Addition, Text: "return store.Save()", NewNumber: 3},
+			}}}}
+
+			for _, split := range []bool{false, true} {
+				page := diffview.Render(diffview.Source{Patch: patch}, diffview.Options{Width: 60, Split: split, Find: search.New("store")})
+
+				require.Equal(t, []int{1, 3}, page.Matches)
+			}
+		})
+
+		t.Run("gives the found text its own background", func(t *testing.T) {
+			patch := diff.Patch{Hunks: []diff.Hunk{{Lines: []diff.Line{
+				{Kind: diff.Addition, Text: "return store.Save()", NewNumber: 1},
+			}}}}
+
+			page := diffview.Render(diffview.Source{Patch: patch}, diffview.Options{Width: 60, Find: search.New("store")})
+
+			require.NotEqual(t, backgroundOf(t, page.Lines[1], "return"), backgroundOf(t, page.Lines[1], "store"))
 		})
 
 		t.Run("describes a patch with no lines to show", func(t *testing.T) {

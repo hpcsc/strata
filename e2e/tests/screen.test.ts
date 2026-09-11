@@ -61,6 +61,35 @@ describe('the strata screen', () => {
     expect(screen).toContain('Folder · orders/')
   })
 
+  it('/ finds text in the diff, and n moves to the next match', async () => {
+    const strata = await openStrata(ordersRepo().dir)
+    await strata.waitForText('Branch · orders-handler')
+    await strata.press('enter')
+    await strata.press('enter')
+    await strata.waitForText('h.store.Save(order)')
+
+    await strata.press('/')
+    await strata.type('store')
+    await strata.press('enter')
+
+    await strata.waitForText('/store · 1/3')
+    await strata.press('n')
+    await strata.waitForText('/store · 2/3')
+  })
+
+  it('/ in the stack keeps the matching branches and the branches they sit on', async () => {
+    const strata = await openStrata(ordersRepo().dir)
+    await strata.waitForText('Branch · orders-handler')
+
+    await strata.press('/')
+    await strata.type('api')
+
+    const screen = await strata.waitForText('1 of 4 branches')
+    expect(screen).toContain('orders-events')
+    expect(screen).toContain('orders-api')
+    expect(screen).not.toContain('billing')
+  })
+
   it('folds a folder once every file in it is viewed, and keeps the marks after a restart', async () => {
     const repo = ordersRepo()
     const first = await openStrata(repo.dir)

@@ -2,12 +2,15 @@ package diffview
 
 import (
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/syntax"
 )
 
 type Options struct {
 	Width int
 	Split bool
+	// Find marks the text that matches it.
+	Find search.Query
 }
 
 // Source is a patch with the highlighted text of the file before and after
@@ -23,12 +26,15 @@ type Page struct {
 	Lines []string
 	// Hunks holds the index in Lines where each hunk starts.
 	Hunks []int
+	// Matches holds the index in Lines of each row that shows a match of
+	// Options.Find.
+	Matches []int
 }
 
 const minWidth = 24
 
 func Render(src Source, opts Options) Page {
-	r := newRenderer(src, max(opts.Width, minWidth))
+	r := newRenderer(src, max(opts.Width, minWidth), opts.Find)
 	if summary := src.Patch.Summary(); summary != "" {
 		return Page{Lines: []string{r.note(summary)}}
 	}
@@ -37,11 +43,17 @@ func Render(src Source, opts Options) Page {
 	for _, h := range src.Patch.Hunks {
 		page.Hunks = append(page.Hunks, len(page.Lines))
 		page.Lines = append(page.Lines, r.hunkHeader(h))
+		var rows []string
+		var matches []int
 		if split {
-			page.Lines = append(page.Lines, r.split(h)...)
+			rows, matches = r.split(h)
 		} else {
-			page.Lines = append(page.Lines, r.unified(h)...)
+			rows, matches = r.unified(h)
 		}
+		for _, m := range matches {
+			page.Matches = append(page.Matches, len(page.Lines)+m)
+		}
+		page.Lines = append(page.Lines, rows...)
 	}
 	return page
 }

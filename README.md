@@ -80,6 +80,7 @@ from `task install`, is not a release, so `strata update` does not replace it un
 | | `z` | Show the diff on the full screen. |
 | | `v` | Mark the file viewed and go to the next file. |
 | | `t` | Show the files as a tree or as a list of paths. |
+| | `/` | Search the panel that has the focus. See [Search](#search). |
 | | `r` | Read the branches again. |
 | | `?` | Show all keys. |
 | | `q` | Quit. |
@@ -91,9 +92,23 @@ from `task install`, is not a release, so `strata update` does not replace it un
 | | `ctrl+d` `ctrl+u` | Scroll the diff. |
 | Diff | `j` `k` | Scroll one line. |
 | | `ctrl+d` `ctrl+u` | Scroll half a page. `space` and `b` scroll a full page. |
-| | `n` `N` | Go to the next or previous hunk. |
+| | `n` `N` | Go to the next or previous hunk. While a search is on, go to the next or previous match. |
 | | `J` `K` | Go to the next or previous file. The files in a folded folder do not count. |
 | | `esc` | Go back to the files. In zoom, `esc` ends the zoom first. |
+
+## Search
+
+`/` opens a search line at the bottom of the screen. The search applies to the panel that has the focus,
+and the panel changes as you type:
+
+| Panel | Search |
+| --- | --- |
+| Stack | Shows only the branches that match, and the branches they sit on. |
+| Files | Shows only the files whose paths match, and their folders. The filter stays when you go to another branch. |
+| Diff | Marks the text that matches and goes to the first match. `n` and `N` go to the next and previous match. |
+
+`enter` keeps the search and `esc` clears it. When the search line is closed, `esc` in the panel clears its
+search. A search in lower case ignores case, and a search with a capital letter matches case exactly.
 
 ## Parents
 

@@ -4,6 +4,7 @@ package ui_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -30,7 +31,8 @@ func (m memoryTree) Commits(_ context.Context, b stack.Branch) ([]stack.Commit, 
 }
 
 type memoryDiffs struct {
-	files map[string][]diff.File
+	files   map[string][]diff.File
+	patches map[string]diff.Patch
 }
 
 func (m memoryDiffs) Files(_ context.Context, _, branch string) ([]diff.File, error) {
@@ -38,6 +40,10 @@ func (m memoryDiffs) Files(_ context.Context, _, branch string) ([]diff.File, er
 }
 
 func (m memoryDiffs) Patch(_ context.Context, _, branch string, f diff.File) (diff.Patch, error) {
+	if patch, ok := m.patches[f.Path]; ok {
+		patch.File = f
+		return patch, nil
+	}
 	return diff.Patch{File: f, Hunks: []diff.Hunk{{
 		NewStart: 1, NewLines: 1,
 		Lines: []diff.Line{{Kind: diff.Addition, Text: "content of " + f.Path + " on " + branch, NewNumber: 1}},
@@ -103,9 +109,10 @@ func TestModel(t *testing.T) {
 		return m
 	}
 	type modelSources struct {
-		tree   stack.Tree
-		files  map[string][]diff.File
-		viewed memoryViewed
+		tree    stack.Tree
+		files   map[string][]diff.File
+		patches map[string]diff.Patch
+		viewed  memoryViewed
 	}
 	nestedFiles := func(t *testing.T) modelSources {
 		t.Helper()
@@ -137,7 +144,7 @@ func TestModel(t *testing.T) {
 	startWith := func(src modelSources) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
 			Tree:        memoryTree{tree: src.tree},
-			Diffs:       memoryDiffs{files: src.files},
+			Diffs:       memoryDiffs{files: src.files, patches: src.patches},
 			Highlighter: plainText{},
 			Viewed:      src.viewed,
 		})
@@ -322,6 +329,61 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "Files · first")
 			require.Contains(t, view, "▾ a/")
 			require.Contains(t, view, "one.go · 1/3")
+		})
+	})
+
+	t.Run("search", func(t *testing.T) {
+		t.Run("/ in the stack keeps the matching branches and the branches they sit on", func(t *testing.T) {
+			view := screen(press(start(memoryViewed{}), "/", "hand"))
+
+			require.Contains(t, view, "└─ events")
+			require.Contains(t, view, "└─ handler")
+			require.NotContains(t, view, "billing")
+			require.Contains(t, view, "/hand")
+			require.Contains(t, view, "1 of 3 branches")
+		})
+
+		t.Run("enter keeps a filter, and esc then clears it", func(t *testing.T) {
+			kept := press(start(memoryViewed{}), "/", "hand", "enter")
+
+			require.Contains(t, screen(kept), "/hand · 1 of 3 branches · esc clear")
+
+			cleared := screen(press(kept, "esc"))
+			require.Contains(t, cleared, "└─ billing")
+			require.NotContains(t, cleared, "/hand")
+		})
+
+		t.Run("/ in the files keeps the matching paths, and the filter stays on the next branch", func(t *testing.T) {
+			filtered := press(startWith(twoBranches(t)), "enter", "/", "one", "enter")
+
+			require.Contains(t, screen(filtered), "1 of 3 files")
+			require.NotContains(t, screen(filtered), "two.go")
+
+			next := screen(press(filtered, "]"))
+			require.Contains(t, next, "Files · second")
+			require.Contains(t, next, "1 of 2 files")
+			require.NotContains(t, next, "four.go")
+		})
+
+		t.Run("/ in the diff finds the text, and n moves to the next match", func(t *testing.T) {
+			src := nestedFiles(t)
+			var lines []diff.Line
+			for i := 1; i <= 40; i++ {
+				text := fmt.Sprintf("line %d", i)
+				if i == 5 || i == 30 {
+					text += " holds the needle"
+				}
+				lines = append(lines, diff.Line{Kind: diff.Addition, Text: text, NewNumber: i})
+			}
+			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: []diff.Hunk{{NewStart: 1, NewLines: 40, Lines: lines}}}}
+
+			found := press(startWith(src), "enter", "enter", "/", "needle", "enter")
+
+			require.Contains(t, screen(found), "/needle · 1/2")
+			moved := press(found, "n")
+			require.Contains(t, screen(moved), "/needle · 2/2")
+			require.Contains(t, screen(moved), "line 30 holds the needle")
+			require.NotContains(t, screen(press(moved, "esc")), "/needle")
 		})
 	})
 

@@ -18,9 +18,10 @@ type cell struct {
 	bold   bool
 	italic bool
 	marked bool
+	found  bool
 }
 
-func layOut(text string, spans []syntax.Span, marks []diff.Range) []cell {
+func layOut(text string, spans []syntax.Span, marks, found []diff.Range) []cell {
 	if joined(spans) != text {
 		spans = []syntax.Span{{Text: text}}
 	}
@@ -28,7 +29,10 @@ func layOut(text string, spans []syntax.Span, marks []diff.Range) []cell {
 	offset, column := 0, 0
 	for _, span := range spans {
 		for i, r := range span.Text {
-			c := cell{color: span.Color, bold: span.Bold, italic: span.Italic, marked: inside(offset+i, marks)}
+			c := cell{
+				color: span.Color, bold: span.Bold, italic: span.Italic,
+				marked: inside(offset+i, marks), found: inside(offset+i, found),
+			}
 			switch {
 			case r == '\t':
 				for n := tabWidth - column%tabWidth; n > 0; n-- {

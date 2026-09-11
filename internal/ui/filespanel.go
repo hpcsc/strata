@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/search"
 )
 
 type fileRow struct {
@@ -24,12 +25,15 @@ type filesPanel struct {
 	// files holds the listed files in the order the rows show them.
 	files []diff.File
 	all   []fileRow
-	// rows holds the rows that show: all of them less the rows inside a
-	// folded folder.
+	// rows holds the rows that show: all of them less the rows that a folded
+	// folder or the filter hides.
 	rows []fileRow
 	// folded holds the folders that o folded or unfolded, by path. Any other
 	// folder folds when every file in it is viewed.
 	folded map[string]bool
+	// filter hides the files whose paths do not match it, and the folders
+	// with no such file. While it is set, no folder is folded.
+	filter search.Query
 	flat   bool
 	notice string
 	cursor int
@@ -101,11 +105,18 @@ func (p *filesPanel) layOut(want string) {
 	for i, f := range p.files {
 		if f.Path == want {
 			p.reveal(i)
-			p.cursor = p.rowOf(i)
-			p.follow()
-			return
+			if row := p.rowOf(i); row >= 0 {
+				p.cursor = row
+				p.follow()
+				return
+			}
 		}
 	}
+	p.toFirstFile()
+}
+
+func (p *filesPanel) toFirstFile() {
+	p.cursor = 0
 	for i, r := range p.rows {
 		if r.file >= 0 {
 			p.cursor = i
@@ -115,12 +126,42 @@ func (p *filesPanel) layOut(want string) {
 	p.follow()
 }
 
+// setFilter shows only the files that match filter. It reports whether the
+// selected file changed, which happens when the filter hides it.
+func (p *filesPanel) setFilter(filter search.Query) bool {
+	before, had := p.selected()
+	p.filter = filter
+	p.showRows()
+	for i, f := range p.files {
+		if had && f.Path == before.Path {
+			if row := p.rowOf(i); row >= 0 {
+				p.cursor = row
+				p.follow()
+				return false
+			}
+		}
+	}
+	p.toFirstFile()
+	after, has := p.selected()
+	return has != had || after.Path != before.Path
+}
+
+func (p filesPanel) matching() int {
+	n := 0
+	for _, f := range p.files {
+		if p.filter.Matches(f.Path) {
+			n++
+		}
+	}
+	return n
+}
+
 func (p *filesPanel) showNotice(notice string) {
 	p.listed, p.files, p.all, p.rows, p.notice, p.cursor, p.offset = nil, nil, nil, nil, notice, 0, 0
 }
 
 func (p filesPanel) isFolded(folder string) bool {
-	if p.flat {
+	if p.flat || !p.filter.Empty() {
 		return false
 	}
 	if folded, ok := p.folded[folder]; ok {
@@ -160,11 +201,29 @@ func (p *filesPanel) showRows() {
 			continue
 		}
 		hiddenBelow = -1
+		if !p.passesFilter(r) {
+			continue
+		}
 		p.rows = append(p.rows, r)
 		if r.file < 0 && p.isFolded(r.folder) {
 			hiddenBelow = r.depth
 		}
 	}
+}
+
+func (p filesPanel) passesFilter(r fileRow) bool {
+	if p.filter.Empty() {
+		return true
+	}
+	if r.file >= 0 {
+		return p.filter.Matches(p.files[r.file].Path)
+	}
+	for _, f := range p.filesIn(r.folder) {
+		if p.filter.Matches(f.Path) {
+			return true
+		}
+	}
+	return false
 }
 
 // rowFor finds the row that shows target, or the deepest folder row that
@@ -186,13 +245,14 @@ func (p filesPanel) rowFor(target fileRow) int {
 	return best
 }
 
+// rowOf returns the row that shows file, or -1 when file does not show.
 func (p filesPanel) rowOf(file int) int {
 	for i, r := range p.rows {
 		if r.file == file {
 			return i
 		}
 	}
-	return 0
+	return -1
 }
 
 func (p *filesPanel) reveal(file int) {
