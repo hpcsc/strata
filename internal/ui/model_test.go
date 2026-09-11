@@ -4,6 +4,7 @@ package ui_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -100,6 +101,38 @@ func TestModel(t *testing.T) {
 			}
 		}
 		return m
+	}
+	type modelSources struct {
+		tree   stack.Tree
+		files  map[string][]diff.File
+		viewed memoryViewed
+	}
+	nestedFiles := func(t *testing.T) modelSources {
+		t.Helper()
+		tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "nested", Parent: "origin/main", Base: "b0"}}}
+		return modelSources{tree: tree, viewed: memoryViewed{}, files: map[string][]diff.File{"nested": {
+			file("README.md"), file("common/modules/a/one.go"), file("common/modules/a/two.go"), file("common/modules/b/three.go"),
+		}}}
+	}
+	requireInOrder := func(t *testing.T, view string, texts ...string) {
+		t.Helper()
+		at := 0
+		for _, text := range texts {
+			i := strings.Index(view[at:], text)
+			require.NotEqual(t, -1, i, "%q does not follow the text before it in:\n%s", text, view)
+			at += i + len(text)
+		}
+	}
+	startWith := func(src modelSources) tea.Model {
+		m := ui.New(context.Background(), src.tree, ui.Sources{
+			Tree:        memoryTree{tree: src.tree},
+			Diffs:       memoryDiffs{files: src.files},
+			Highlighter: plainText{},
+			Viewed:      src.viewed,
+		})
+		var sized tea.Model = m
+		sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+		return settle(sized, m.Init())
 	}
 	start := func(viewed memoryViewed) tea.Model {
 		tree, files := stackOf()
@@ -198,9 +231,28 @@ func TestModel(t *testing.T) {
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 20})
 
-			view := screen(settle(sized, m.Init()))
+			view := screen(press(settle(sized, m.Init()), "t"))
 
 			require.Contains(t, view, "M   …/afterpay-us-bankruptcy.md")
+		})
+
+		t.Run("shows files under their directories, with a chain of single directories on one row", func(t *testing.T) {
+			view := screen(startWith(nestedFiles(t)))
+
+			requireInOrder(t, view, "common/modules/", "a/", "one.go", "two.go", "b/", "three.go", "README.md")
+		})
+
+		t.Run("moves through the files in the order the tree shows them", func(t *testing.T) {
+			m := press(startWith(nestedFiles(t)), "enter", "j", "j", "j")
+
+			require.Contains(t, screen(m), "README.md · 4/4")
+		})
+
+		t.Run("t shows the files as a list of paths", func(t *testing.T) {
+			view := screen(press(startWith(nestedFiles(t)), "t"))
+
+			require.Contains(t, view, "common/modules/a/one.go")
+			require.NotContains(t, view, "  b/")
 		})
 	})
 

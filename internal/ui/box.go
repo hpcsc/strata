@@ -27,6 +27,7 @@ var (
 	renamedText   = lipgloss.NewStyle().Foreground(lipgloss.Color("110"))
 	modifiedText  = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
 	viewedText    = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	directoryText = lipgloss.NewStyle().Foreground(lipgloss.Color("67"))
 )
 
 // box draws a panel exactly width by height cells, with the title set into

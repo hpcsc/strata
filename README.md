@@ -62,7 +62,8 @@ from `task install`, is not a release, so `strata update` does not replace it un
 - The **Stack** panel shows the branches as a tree under the trunk. Each row shows the commits, files and
   lines that the branch adds to its parent. "1 behind parent" tells you that the parent has a commit that
   the branch does not have, so the branch needs a restack.
-- The **Files** panel shows the files that the selected branch changes.
+- The **Files** panel shows the files that the selected branch changes, under their directories. A chain of
+  directories that each hold only one directory shows on one row. `t` shows the files as a list of paths.
 - The **Diff** panel shows the selected file, side by side or unified, with syntax colours and marks on the
   changed words. When the Stack panel has the focus, this panel shows the commits of the branch.
 
@@ -75,6 +76,7 @@ from `task install`, is not a release, so `strata update` does not replace it un
 | | `s` | Show the diff side by side or unified. |
 | | `z` | Show the diff on the full screen. |
 | | `v` | Mark the file viewed and go to the next file. |
+| | `t` | Show the files as a tree or as a list of paths. |
 | | `r` | Read the branches again. |
 | | `?` | Show all keys. |
 | | `q` | Quit. |

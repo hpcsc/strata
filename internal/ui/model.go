@@ -130,6 +130,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "r":
 		return m, m.reloadTree()
+	case "t":
+		m.files.toggleFlat()
+		return m, nil
 	case "v":
 		if m.focus != focusStack {
 			return m, m.toggleViewed()
@@ -423,7 +426,7 @@ func (m Model) footer() string {
 	}
 	hints := map[focus]string{
 		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
-		focusFiles: "j/k file · ⏎ diff · v viewed · [ ] branch · h back · s split · z zoom · ? keys · q quit",
+		focusFiles: "j/k file · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys · q quit",
 		focusDiff:  "j/k scroll · ^d/^u page · n/N hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
 	}
 	return dimText.Render(" " + truncate(hints[m.focus], max(0, m.width-2)))
@@ -436,6 +439,7 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     s            side by side or unified diff
     z            diff on the full screen
     v            mark the file viewed, then go to the next file
+    t            files as a tree or as a list of paths
     r            read the branches again
     q            quit
 
