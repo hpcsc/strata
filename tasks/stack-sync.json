@@ -67,7 +67,7 @@
     },
     {
       "n": 3,
-      "done": false,
+      "done": true,
       "title": "Replay each branch in memory and keep a stack whole when one branch stays",
       "language": "Go",
       "testable": true,

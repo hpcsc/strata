@@ -282,23 +282,23 @@ repositories get their own git config in this task, because this is the first ta
 commits.
 
 **Acceptance Criteria:**
-- [ ] Each branch that moves gets a new tip. The new tip is its own commits (`<base>..<tip>`), replayed onto
+- [x] Each branch that moves gets a new tip. The new tip is its own commits (`<base>..<tip>`), replayed onto
   one of these:
   - the new trunk, for a branch on the trunk or a child of a merged branch.
   - the new tip of its parent, for any other child.
-- [ ] A branch with no own commits gets the new tip of its parent. The plan does not show it as a conflict.
-- [ ] A branch whose replay stops shows `stays: conflict in <files>`. The files come from one merge of the
+- [x] A branch with no own commits gets the new tip of its parent. The plan does not show it as a conflict.
+- [x] A branch whose replay stops shows `stays: conflict in <files>`. The files come from one merge of the
   full branch onto the new tip of its parent.
-- [ ] A branch with a merge commit in `<base>..<tip>` shows `stays: merge commit`.
-- [ ] `stack.Branch.HasMerge` comes from the commit graph that the reader already builds, so it adds no
+- [x] A branch with a merge commit in `<base>..<tip>` shows `stays: merge commit`.
+- [x] `stack.Branch.HasMerge` comes from the commit graph that the reader already builds, so it adds no
   process.
-- [ ] When a branch stays, every other branch of its stack shows `stays: <branch> cannot move`, where
+- [x] When a branch stays, every other branch of its stack shows `stays: <branch> cannot move`, where
   `<branch>` is a branch that stays for its own reason.
-- [ ] The plan does not mark a merged branch of a stack that stays for deletion.
-- [ ] Other stacks keep their outcomes.
-- [ ] `strata sync --dry-run` prints the plan, then exits 1 when a stack stays because of a conflict.
-- [ ] After a plan with a conflict, each ref under `refs/heads/` and each worktree is as it was before.
-- [ ] The integration tests and the dry-run e2e test pass on a machine whose global git config sets
+- [x] The plan does not mark a merged branch of a stack that stays for deletion.
+- [x] Other stacks keep their outcomes.
+- [x] `strata sync --dry-run` prints the plan, then exits 1 when a stack stays because of a conflict.
+- [x] After a plan with a conflict, each ref under `refs/heads/` and each worktree is as it was before.
+- [x] The integration tests and the dry-run e2e test pass on a machine whose global git config sets
   `commit.gpgsign=true` and gives no user identity. For this, the repositories that `gittest` and
   `e2e/testUtils.ts` make carry their own committer identity and `commit.gpgsign=false`.
 

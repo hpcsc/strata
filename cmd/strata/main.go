@@ -193,6 +193,12 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	printPlan(cmd.Root().Writer, plan)
+	switch n := plan.StacksWithConflict(); {
+	case n == 1:
+		return errors.New("1 stack stays because of a conflict")
+	case n > 1:
+		return fmt.Errorf("%d stacks stay because of conflicts", n)
+	}
 	return nil
 }
 

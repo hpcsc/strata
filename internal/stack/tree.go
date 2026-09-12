@@ -4,6 +4,7 @@ import "strings"
 
 type Branch struct {
 	Name string
+	Ref  string
 	Tip  string
 	// Parent is the branch this one sits on, or the trunk.
 	Parent string
@@ -15,9 +16,10 @@ type Branch struct {
 	Insertions int
 	Deletions  int
 	// Behind counts the commits on Parent that this branch does not have.
-	Behind       int
-	Worktree     string
-	UpstreamGone bool
+	Behind         int
+	Worktree       string
+	UpstreamGone   bool
+	HasMergeCommit bool
 }
 
 // Tree lists branches depth-first: every parent comes before its children.

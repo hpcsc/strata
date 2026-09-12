@@ -229,4 +229,148 @@ func TestPlanner(t *testing.T) {
 			require.Equal(t, []string{"events: moves onto origin/main; remote branch gone, not merged"}, outcomes(p))
 		})
 	})
+
+	t.Run("replay", func(t *testing.T) {
+		subjects := func(t *testing.T, repo *gittest.Repo, from, to string) []string {
+			t.Helper()
+			return strings.Split(strings.TrimSpace(repo.Git("log", "--format=%s", from+".."+to)), "\n")
+		}
+		commit := func(t *testing.T, repo *gittest.Repo, rev string) string {
+			t.Helper()
+			return strings.TrimSpace(repo.Git("rev-parse", rev))
+		}
+
+		t.Run("a branch that moves gets a new tip with its own commits on the new trunk", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			newTip := p.Outcomes["events"].NewTip
+			require.Equal(t, []string{"Name the events"}, subjects(t, repo, "origin/main", newTip))
+			require.Equal(t, commit(t, repo, "origin/main"), commit(t, repo, newTip+"^"))
+		})
+
+		t.Run("a child behind its parent gets a new tip on the tip of its parent", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("events")
+			repo.Commit("events.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+
+			p := plan(t, repo, "origin/main")
+
+			newTip := p.Outcomes["handler"].NewTip
+			require.Equal(t, []string{"Add the handler"}, subjects(t, repo, "events", newTip))
+			require.Equal(t, commit(t, repo, "events"), commit(t, repo, newTip+"^"))
+		})
+
+		t.Run("the child of a merged branch gets a new tip with only its own commits", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.SquashMergeOnOrigin("events")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"Add the handler"}, subjects(t, repo, "origin/main", p.Outcomes["handler"].NewTip))
+		})
+
+		t.Run("a branch with no own commits gets the new tip of its parent", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Git("branch", "empty", "events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main", "empty: moves onto events"}, outcomes(p))
+			require.Equal(t, p.Outcomes["events"].NewTip, p.Outcomes["empty"].NewTip)
+		})
+
+		t.Run("a branch whose replay stops stays, and the plan names the files of the conflict", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: conflict in README.md"}, outcomes(p))
+			require.Equal(t, 1, p.StacksWithConflict())
+		})
+
+		t.Run("a branch that merged the trunk into itself stays", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.Git("fetch", "-q")
+			repo.Git("merge", "-q", "--no-edit", "origin/main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all night\n", "Open all night")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: merge commit"}, outcomes(p))
+			require.Equal(t, 0, p.StacksWithConflict())
+		})
+
+		t.Run("when a branch stays, the branches of its stack that would change stay too, and other stacks move", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.SwitchNew("api")
+			repo.Commit("api.go", "package api\n", "Expose the handler")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{
+				"billing: moves onto origin/main",
+				"events: stays: handler cannot move",
+				"handler: stays: conflict in README.md",
+				"api: stays: handler cannot move",
+			}, outcomes(p))
+		})
+
+		t.Run("a merged branch of a stack that stays is not deleted", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.SquashMergeOnOrigin("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: handler cannot move", "handler: stays: conflict in README.md"}, outcomes(p))
+		})
+
+		t.Run("a plan with a conflict moves no branch and changes no file", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			before := heads(t, repo)
+
+			p := plan(t, repo, "origin/main")
+			require.Equal(t, []string{"events: stays: conflict in README.md"}, outcomes(p))
+
+			require.Equal(t, before, heads(t, repo))
+			require.Empty(t, repo.Git("status", "--porcelain"))
+		})
+	})
 }

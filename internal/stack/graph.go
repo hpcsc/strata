@@ -75,6 +75,16 @@ func (g *graph) only(a, b string) int {
 	return g.reach(a).andNot(g.reach(b)).count()
 }
 
+func (g *graph) hasMergeCommit(tip, base string) bool {
+	own := g.reach(tip).andNot(g.reach(base))
+	for i := range g.ids {
+		if own.has(i) && len(g.parents[i])+len(g.trunkParents[i]) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // mergeBase returns the newest commit a and b share, and how many commits
 // they share. ok is false when they share none, or more than one newest.
 func (g *graph) mergeBase(a, b string) (base string, shared int, ok bool) {

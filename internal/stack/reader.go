@@ -170,7 +170,7 @@ func (r *Reader) place(g *graph, tips []tip, parents map[string]link) []Branch {
 	branches := make([]Branch, len(placements))
 	for i, p := range placements {
 		t, parent := byName[p.name], parents[p.name]
-		b := Branch{Name: p.name, Tip: t.commit, Level: p.level, Worktree: t.worktree, UpstreamGone: t.upstreamGone}
+		b := Branch{Name: p.name, Ref: t.ref, Tip: t.commit, Level: p.level, Worktree: t.worktree, UpstreamGone: t.upstreamGone}
 		if parent.parent == "" {
 			b.Parent, b.Behind, b.Commits = r.trunk, t.behindTrunk, g.count(t.commit)
 			b.Base, _ = g.forkPoint(t.commit)
@@ -179,6 +179,7 @@ func (r *Reader) place(g *graph, tips []tip, parents map[string]link) []Branch {
 			b.Commits = g.only(t.commit, parent.base)
 			b.Behind = g.only(byName[parent.parent].commit, t.commit)
 		}
+		b.HasMergeCommit = g.hasMergeCommit(t.commit, b.Base)
 		branches[i] = b
 	}
 	return branches

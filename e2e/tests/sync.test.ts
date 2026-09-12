@@ -41,4 +41,19 @@ describe('strata sync --dry-run', () => {
     expect(lines[4]).toMatch(/^ {6}└─ orders-api\s+moves onto orders-handler$/)
     expect(lines).toHaveLength(5)
   })
+
+  it('keeps a stack with a conflict where it is, moves the other stacks, and exits 1', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
+
+    const result = await runStrata(repo.dir, ['sync', '--dry-run'])
+
+    expect(result.status).toBe(1)
+    expect(result.stderr.trimEnd().split('\n').at(-1)).toBe('strata: 1 stack stays because of a conflict')
+    const lines = result.stdout.trimEnd().split('\n').map((line) => line.trimEnd())
+    expect(lines[1]).toMatch(/^├─ billing\s+moves onto origin\/main$/)
+    expect(lines[2]).toMatch(/^└─ orders-events\s+stays: conflict in orders\/events.go$/)
+    expect(lines[3]).toMatch(/^ {3}└─ orders-handler\s+stays: orders-events cannot move$/)
+    expect(lines[4]).toMatch(/^ {6}└─ orders-api\s+stays: orders-events cannot move$/)
+  })
 })

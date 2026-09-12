@@ -57,6 +57,10 @@ export class Repo {
     git(root, 'init', '-q', '--bare', '-b', 'main', 'origin.git')
     git(root, 'clone', '-q', 'origin.git', 'repo')
     const repo = new Repo(join(root, 'repo'), join(root, 'origin.git'))
+    // strata does not get gitEnv, so the repository holds the settings that its commits need
+    repo.git('config', 'user.name', 'strata')
+    repo.git('config', 'user.email', 'strata@example.com')
+    repo.git('config', 'commit.gpgsign', 'false')
     repo.commit('README.md', '# shop\n', 'Start the shop')
     repo.git('push', '-q', 'origin', 'main')
     repo.git('remote', 'set-head', 'origin', '-a')

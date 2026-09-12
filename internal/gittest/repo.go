@@ -24,6 +24,11 @@ func New(t testing.TB) *Repo {
 	run(t, root, "init", "-q", "--bare", "-b", "main", origin)
 	run(t, root, "clone", "-q", origin, dir)
 	r := &Repo{t: t, Dir: dir, origin: origin}
+	// strata runs git with the environment of the test, so the settings of
+	// run do not reach it, and the global config of the machine does
+	r.Git("config", "user.name", "strata")
+	r.Git("config", "user.email", "strata@example.com")
+	r.Git("config", "commit.gpgsign", "false")
 	r.Commit("README.md", "shop\n", "Start the shop")
 	r.Git("push", "-q", "origin", "main")
 	r.Git("remote", "set-head", "origin", "-a")
