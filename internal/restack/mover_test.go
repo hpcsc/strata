@@ -264,6 +264,27 @@ func TestMover(t *testing.T) {
 				require.Equal(t, []string{"Name the events", "Add Placed"}, signed(t, repo, "origin/main", "events"))
 			})
 
+			t.Run("a child behind a parent that is up to date moves onto that parent, and the parent stays", func(t *testing.T) {
+				repo := gittest.New(t)
+				repo.SwitchNew("events")
+				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.SwitchNew("handler")
+				repo.Commit("handler.go", "package orders\n", "Add the handler")
+				repo.Switch("events")
+				repo.Commit("events.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+				repo.Switch("main")
+				repo.SignWithFakeGPG()
+				eventsBefore := commit(t, repo, "events")
+				p := plan(t, repo)
+
+				result := move(t, repo, p)
+
+				require.Equal(t, restack.Result{Moved: 1}, result)
+				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+				require.Equal(t, eventsBefore, commit(t, repo, "handler^"))
+				require.Equal(t, []string{"Add the handler"}, signed(t, repo, "events", "handler"))
+			})
+
 			t.Run("the children of a merged branch move onto the new trunk with only their own commits", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
@@ -484,6 +505,24 @@ func TestMover(t *testing.T) {
 				require.Equal(t, restack.Result{Moved: 1}, result)
 				require.Equal(t, p.Outcomes["events"].NewTip, commit(t, worktree, "HEAD"))
 				require.Empty(t, worktree.Git("status", "--porcelain"))
+			})
+
+			t.Run("keeps a merged branch that a worktree checked out after the plan, and moves its children", func(t *testing.T) {
+				repo := gittest.New(t)
+				repo.SwitchNew("events")
+				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.SwitchNew("handler")
+				repo.Commit("handler.go", "package orders\n", "Add the handler")
+				repo.Switch("main")
+				repo.SquashMergeOnOrigin("events")
+				eventsBefore := commit(t, repo, "events")
+				p := plan(t, repo)
+				repo.Worktree("events")
+
+				move(t, repo, p)
+
+				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+				require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, repo, "handler"))
 			})
 
 			t.Run("keeps uncommitted changes in files that the move does not change", func(t *testing.T) {
