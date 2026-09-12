@@ -106,8 +106,22 @@ func (r *Repo) worktreeDir(branch string) string {
 	return filepath.Join(filepath.Dir(r.Dir), "worktree-"+strings.ReplaceAll(branch, "/", "-"))
 }
 
+// StartRebase starts a rebase of the checked-out branch that must stop on a
+// conflict, and leaves it stopped.
+func (r *Repo) StartRebase(onto string) {
+	r.t.Helper()
+	out, err := command(r.Dir, "rebase", onto).CombinedOutput()
+	require.Error(r.t, err, "git rebase %s did not stop: %s", onto, out)
+}
+
 func run(t testing.TB, dir string, args ...string) string {
 	t.Helper()
+	out, err := command(dir, args...).CombinedOutput()
+	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
+	return string(out)
+}
+
+func command(dir string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
@@ -118,7 +132,5 @@ func run(t testing.TB, dir string, args ...string) string {
 		"GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=/dev/null",
 		"GIT_CONFIG_KEY_2=init.defaultBranch", "GIT_CONFIG_VALUE_2=main",
 	)
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
-	return string(out)
+	return cmd
 }

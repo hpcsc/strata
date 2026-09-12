@@ -61,6 +61,16 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 		outcomes[b.Name] = o
 	}
 	keepStacksWhole(tree, outcomes)
+	check, err := newWorktreeCheck(ctx, p.git)
+	if err != nil {
+		return Plan{}, err
+	}
+	for _, b := range tree.Branches {
+		if outcomes[b.Name], err = check.outcome(ctx, b, outcomes[b.Name]); err != nil {
+			return Plan{}, err
+		}
+	}
+	keepStacksWhole(tree, outcomes)
 	return Plan{Tree: tree, NewCommits: newCommits, TrunkTip: tip, Outcomes: outcomes}, nil
 }
 

@@ -4,6 +4,7 @@ package restack_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +40,7 @@ func TestPlanner(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
 			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
 
 			p := plan(t, repo, "origin/main")
@@ -78,6 +80,7 @@ func TestPlanner(t *testing.T) {
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.SwitchNew("handler")
 			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
 
 			p := plan(t, repo, "origin/main")
@@ -147,6 +150,7 @@ func TestPlanner(t *testing.T) {
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.SwitchNew("handler")
 			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
 			repo.SquashMergeOnOrigin("events")
 
 			p := plan(t, repo, "origin/main")
@@ -179,6 +183,7 @@ func TestPlanner(t *testing.T) {
 			repo.Commit("handler.go", "package orders\n", "Add the handler")
 			repo.SwitchNew("api")
 			repo.Commit("api.go", "package api\n", "Expose the handler")
+			repo.Switch("main")
 			repo.SquashMergeOnOrigin("events")
 			repo.SquashMergeOnOrigin("handler")
 
@@ -196,6 +201,7 @@ func TestPlanner(t *testing.T) {
 			repo.SwitchNew("events")
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.Commit("placed.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.Switch("main")
 			repo.CommitOnOrigin("events.go", "package orders\n", "Pick the events file into main")
 
 			p := plan(t, repo, "origin/main")
@@ -209,6 +215,7 @@ func TestPlanner(t *testing.T) {
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.Git("rm", "-q", "events.go")
 			repo.Git("commit", "-q", "-m", "Remove the events")
+			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
 
 			p := plan(t, repo, "origin/main")
@@ -222,6 +229,7 @@ func TestPlanner(t *testing.T) {
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.Git("push", "-q", "-u", "origin", "events")
 			repo.Git("push", "-q", "origin", "--delete", "events")
+			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
 
 			p := plan(t, repo, "origin/main")
@@ -287,6 +295,7 @@ func TestPlanner(t *testing.T) {
 			repo.SwitchNew("events")
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.Git("branch", "empty", "events")
+			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
 
 			p := plan(t, repo, "origin/main")
@@ -371,6 +380,136 @@ func TestPlanner(t *testing.T) {
 
 			require.Equal(t, before, heads(t, repo))
 			require.Empty(t, repo.Git("status", "--porcelain"))
+		})
+	})
+
+	t.Run("worktrees", func(t *testing.T) {
+		realPath := func(t *testing.T, dir string) string {
+			t.Helper()
+			path, err := filepath.EvalSymlinks(dir)
+			require.NoError(t, err)
+			return path
+		}
+
+		t.Run("a branch that a rebase in another worktree uses stays, and its stack stays too", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.Switch("main")
+			worktree := repo.Worktree("handler")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Git("fetch", "-q")
+			worktree.StartRebase("origin/main")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{
+				"events: stays: handler cannot move",
+				"handler: stays: a rebase in " + realPath(t, worktree.Dir) + " uses it",
+			}, outcomes(p))
+		})
+
+		t.Run("a branch that a rebase in the main worktree uses stays", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.Git("fetch", "-q")
+			repo.StartRebase("origin/main")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: a rebase in " + realPath(t, repo.Dir) + " uses it"}, outcomes(p))
+		})
+
+		t.Run("a branch whose worktree has changes in a file that the move changes stays", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Write("README.md", "shop\n\nmine\n")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: changes in " + realPath(t, worktree.Dir) + ": README.md"}, outcomes(p))
+		})
+
+		t.Run("a staged change in a file that the move changes keeps the branch where it is", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Write("README.md", "shop\n\nmine\n")
+			worktree.Git("add", "README.md")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: changes in " + realPath(t, worktree.Dir) + ": README.md"}, outcomes(p))
+		})
+
+		t.Run("an untracked file where the move adds a file keeps the branch where it is", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("hours/weekdays.txt", "9 to 5\n", "Add the hours")
+			worktree.Write("hours/weekdays.txt", "mine\n")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: stays: changes in " + realPath(t, worktree.Dir) + ": hours/"}, outcomes(p))
+		})
+
+		t.Run("a branch still moves when its worktree has changes only in files that the move does not change", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Write("events.go", "package orders\n\n// mine\n")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main, checked out in " + realPath(t, worktree.Dir)}, outcomes(p))
+		})
+
+		t.Run("the plan names the worktree that strata runs in", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main, checked out in " + realPath(t, repo.Dir)}, outcomes(p))
+		})
+
+		t.Run("a branch whose worktree folder is gone stays, and the plan of the other stacks goes on", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			require.NoError(t, os.RemoveAll(worktree))
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{
+				"billing: moves onto origin/main",
+				"events: stays: its worktree " + worktree + " is not there; run git worktree prune if you deleted it",
+			}, outcomes(p))
 		})
 	})
 }

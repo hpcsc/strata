@@ -340,20 +340,20 @@ and has uncommitted changes that touch the files that the branch's move changes.
 worktree whose branch the sync moves.
 
 **Acceptance Criteria:**
-- [ ] A rebase in any worktree can use a branch. Its `rebase-merge/head-name` or `rebase-apply/head-name`
+- [x] A rebase in any worktree can use a branch. Its `rebase-merge/head-name` or `rebase-apply/head-name`
   names the branch, in the git dir of the main worktree or of a linked worktree. Such a branch shows
   `stays: a rebase in <worktree> uses it`, and its stack stays. This also applies when `%(worktreepath)` is
   empty for the branch.
-- [ ] strata reads those files with no git process, and does the check for every branch.
-- [ ] A worktree can have a branch checked out and uncommitted changes (staged, unstaged or untracked, as
+- [x] strata reads those files with no git process, and does the check for every branch.
+- [x] A worktree can have a branch checked out and uncommitted changes (staged, unstaged or untracked, as
   `git status` lists them) in a file that the move changes between the tip and the new tip. Such a branch
   shows `stays: changes in <worktree>`, and its stack stays.
-- [ ] A branch still moves when its worktree has changes only in files that the move does not change.
-- [ ] The plan names the worktree of each branch that moves while a worktree has it checked out. This
+- [x] A branch still moves when its worktree has changes only in files that the move does not change.
+- [x] The plan names the worktree of each branch that moves while a worktree has it checked out. This
   includes the worktree that strata runs in.
 - [ ] A worktree whose HEAD is not on the tip that the plan read makes its stack stay, and the outcome names
   the worktree. Task 6 tests this at move time, where it can occur.
-- [ ] The checks add at most two git processes for each branch in a worktree: `git status --porcelain=v2
+- [x] The checks add at most two git processes for each branch in a worktree: `git status --porcelain=v2
   --branch` and `git diff --name-only`.
 
 **Affected Files/Modules:**

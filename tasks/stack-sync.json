@@ -94,7 +94,7 @@
     },
     {
       "n": 4,
-      "done": false,
+      "done": true,
       "title": "Keep a stack when a worktree rebases or changes its branch",
       "language": "Go",
       "testable": true,

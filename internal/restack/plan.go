@@ -15,11 +15,19 @@ const (
 	Conflict
 	MergeCommit
 	Loop
+	Rebasing
+	WorktreeGone
+	Changes
+	Stale
 	Blocked
 )
 
 func (k Kind) keepsStack() bool {
-	return k == Conflict || k == MergeCommit || k == Loop
+	switch k {
+	case Conflict, MergeCommit, Loop, Rebasing, WorktreeGone, Changes, Stale:
+		return true
+	}
+	return false
 }
 
 type Outcome struct {
@@ -38,6 +46,9 @@ func (o Outcome) Text() string {
 	switch o.Kind {
 	case Moves:
 		text = "moves onto " + o.NewParent
+		if o.Worktree != "" {
+			text += ", checked out in " + o.Worktree
+		}
 	case Merged:
 		if o.Worktree != "" {
 			return "merged, checked out in " + o.Worktree
@@ -52,6 +63,14 @@ func (o Outcome) Text() string {
 		return "stays: merge commit"
 	case Loop:
 		return "stays: its parents form a loop"
+	case Rebasing:
+		return "stays: a rebase in " + o.Worktree + " uses it"
+	case WorktreeGone:
+		return "stays: its worktree " + o.Worktree + " is not there; run git worktree prune if you deleted it"
+	case Changes:
+		return "stays: changes in " + o.Worktree + ": " + strings.Join(o.Files, ", ")
+	case Stale:
+		return "stays: it changed in " + o.Worktree
 	case Blocked:
 		return "stays: " + o.Blocker + " cannot move"
 	default:

@@ -37,7 +37,7 @@ describe('strata sync --dry-run', () => {
     expect(lines[0]).toBe('origin/main  1 new commit')
     expect(lines[1]).toMatch(/^├─ billing\s+moves onto origin\/main$/)
     expect(lines[2]).toMatch(/^└─ orders-events\s+moves onto origin\/main$/)
-    expect(lines[3]).toMatch(/^ {3}└─ orders-handler\s+moves onto orders-events$/)
+    expect(lines[3]).toMatch(/^ {3}└─ orders-handler\s+moves onto orders-events, checked out in \/.+\/repo$/)
     expect(lines[4]).toMatch(/^ {6}└─ orders-api\s+moves onto orders-handler$/)
     expect(lines).toHaveLength(5)
   })
