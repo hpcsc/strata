@@ -98,7 +98,7 @@ Two helpers start strata:
 | Helper | Use for | How it works |
 | --- | --- | --- |
 | `runStrata(cwd, args, env)` | Commands that print and stop, such as `--list`, `version` and `update` | Starts strata as a child process with pipes. It gives stdout, stderr and the exit status. |
-| `openStrata(cwd, args)` | The screen | Starts `sh -c '<strata> <args>; echo "EXIT:$?"'` in a pseudo-terminal. When strata stops, the shell writes its exit status on the screen, so a test can wait for `EXIT:0`. |
+| `openStrata(cwd, args, env)` | The screen | Starts `sh -c '<env> <strata> <args>; echo "EXIT:$?"'` in a pseudo-terminal. When strata stops, the shell writes its exit status on the screen, so a test can wait for `EXIT:0`. |
 
 `runStrata` does not block. The update tests run a fake server in the test process, and that server must
 answer while strata waits for it.
@@ -158,8 +158,8 @@ The sync tests need two more things from the fixture repository:
   and pushes it. The repository of the test gets the commit only when strata fetches.
 - **An old git:** `pathWithOldGit()` returns a `PATH` with a folder first. That folder holds a `git` script
   that prints `git version 2.43.0` for `git version` and runs the real git for all other commands. A test
-  gives it to strata as `runStrata(dir, args, { PATH: pathWithOldGit() })`, and strata then hides
-  `strata sync`.
+  gives it to strata as `runStrata(dir, args, { PATH: pathWithOldGit() })` or
+  `openStrata(dir, [], { PATH: pathWithOldGit() })`, and strata then hides `strata sync` and the `S` key.
 
 ## Where the tests run
 

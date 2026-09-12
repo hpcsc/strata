@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 type Repo struct {
@@ -82,6 +83,20 @@ func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return &Error{Args: args, Err: err}
+	}
+	return nil
+}
+
+// ssh asks for a passphrase on /dev/tty, which a session with no terminal does not have.
+func (r *Repo) FetchWithoutPrompt(ctx context.Context, remote string) error {
+	args := []string{"fetch", "--prune", remote}
+	var stderr bytes.Buffer
+	cmd := r.command(ctx, args)
+	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
 	}
 	return nil
 }

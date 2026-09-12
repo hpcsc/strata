@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
 )
@@ -22,6 +23,11 @@ const (
 
 type treeLoaded struct {
 	tree stack.Tree
+	err  error
+}
+
+type planLoaded struct {
+	plan restack.Plan
 	err  error
 }
 
@@ -47,6 +53,7 @@ type Model struct {
 	wantPath string
 	prompt   prompt
 	initial  tea.Cmd
+	planning bool
 }
 
 func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
@@ -82,7 +89,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.cache.clear()
 		m.filesKey = ""
+		m.stack.plan = nil
 		m.stack.replace(msg.tree)
+		m.layout()
+		return m, m.showSelection()
+	case planLoaded:
+		m.planning = false
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		m.cache.clear()
+		m.filesKey = ""
+		m.stack.showPlan(msg.plan)
+		m.focus = focusStack
 		m.layout()
 		return m, m.showSelection()
 	}
@@ -109,6 +129,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.help = true
 		return m, nil
+	case "S":
+		return m, m.planSync()
+	case "esc":
+		if m.stack.plan != nil {
+			m.stack.closePlan()
+			m.cache.clear()
+			m.filesKey = ""
+			m.layout()
+			return m, m.showSelection()
+		}
 	case "/":
 		m.prompt.start(m.focus, m.query(m.focus).String())
 		return m, nil
@@ -352,6 +382,26 @@ func (m *Model) toggleViewed() tea.Cmd {
 	return m.fileMoved()
 }
 
+func (m Model) canSync() bool {
+	return m.sources.Sync != nil && m.sources.Sync.Available() == nil
+}
+
+func (m *Model) planSync() tea.Cmd {
+	if m.sources.Sync == nil || m.planning {
+		return nil
+	}
+	if err := m.sources.Sync.Available(); err != nil {
+		m.status = err.Error()
+		return nil
+	}
+	m.planning = true
+	ctx, sync := m.ctx, m.sources.Sync
+	return func() tea.Msg {
+		plan, err := sync.Plan(ctx)
+		return planLoaded{plan: plan, err: err}
+	}
+}
+
 func (m Model) reloadTree() tea.Cmd {
 	ctx, tree := m.ctx, m.sources.Tree
 	return func() tea.Msg {
@@ -435,7 +485,7 @@ func (m Model) View() string {
 		return ""
 	}
 	if m.help {
-		return box("Keys · any key closes", helpLines, m.width, m.height, true)
+		return box("Keys · any key closes", helpLines(m.canSync()), m.width, m.height, true)
 	}
 	footer := m.footer()
 	if m.zoomed {
@@ -443,7 +493,11 @@ func (m Model) View() string {
 		return box(title, lines, m.width, m.height-1, true) + "\n" + footer
 	}
 	bottom := m.height - 1 - m.stackHeight
-	stackBox := box("Stack", m.stack.lines(m.width-2, m.focus == focusStack, m.progress), m.width, m.stackHeight, m.focus == focusStack)
+	stackTitle := "Stack"
+	if m.stack.plan != nil {
+		stackTitle = "Stack · sync plan"
+	}
+	stackBox := box(stackTitle, m.stack.lines(m.width-2, m.focus == focusStack, m.progress), m.width, m.stackHeight, m.focus == focusStack)
 	filesBox := box(m.filesTitle(), m.files.lines(m.filesWidth-2, m.focus == focusFiles), m.filesWidth, bottom, m.focus == focusFiles)
 	title, lines := m.rightPanel()
 	right := box(title, lines, m.width-m.filesWidth, bottom, m.focus == focusDiff)
@@ -575,10 +629,19 @@ func (m Model) footer() string {
 	if m.status != "" {
 		return errorText.Render(" " + m.status)
 	}
+	if m.planning {
+		return dimText.Render(" fetching the trunk and planning the sync…")
+	}
 	hints := map[focus]string{
 		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
 		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
 		focusDiff:  "j/k scroll · ^d/^u page · n/N hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
+	}
+	if m.canSync() {
+		hints[focusStack] = strings.Replace(hints[focusStack], "r refresh", "r refresh · S sync", 1)
+	}
+	if m.stack.plan != nil {
+		hints[focusStack] = "j/k branch · esc close · ⏎ files · tab panel · ? keys · q quit"
 	}
 	line := hints[m.focus]
 	if query := m.query(m.focus); !query.Empty() {
@@ -602,7 +665,21 @@ func (m Model) searchResult(target focus) string {
 	}
 }
 
-var helpLines = strings.Split(strings.TrimPrefix(`
+func helpLines(canSync bool) []string {
+	text := keysText
+	if canSync {
+		text = strings.Replace(text, "read the branches again\n",
+			"read the branches again\n    S            fetch the trunk and show the plan of a sync\n", 1) + syncKeysText
+	}
+	return strings.Split(strings.TrimPrefix(text, "\n"), "\n")
+}
+
+const syncKeysText = `
+  Sync plan
+    esc          close the plan
+`
+
+const keysText = `
   Anywhere
     [ ]          previous or next branch; the same file stays selected when it can
     tab          next panel (shift+tab: previous panel)
@@ -633,4 +710,4 @@ var helpLines = strings.Split(strings.TrimPrefix(`
     n/N          next or previous hunk, or match while a search is on
     J/K          next or previous file, past folded folders
     h  esc       back to the files (in zoom, esc ends the zoom first)
-`, "\n"), "\n")
+`

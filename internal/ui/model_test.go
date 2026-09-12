@@ -4,6 +4,7 @@ package ui_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/hpcsc/strata/internal/ui"
@@ -58,6 +60,20 @@ type plainText struct{}
 
 func (plainText) Lines(string, string) [][]syntax.Span {
 	return nil
+}
+
+type memorySync struct {
+	unavailable error
+	plan        restack.Plan
+	planErr     error
+}
+
+func (m memorySync) Available() error {
+	return m.unavailable
+}
+
+func (m memorySync) Plan(context.Context) (restack.Plan, error) {
+	return m.plan, m.planErr
 }
 
 type memoryViewed map[string]bool
@@ -384,6 +400,78 @@ func TestModel(t *testing.T) {
 			require.Contains(t, screen(moved), "/needle · 2/2")
 			require.Contains(t, screen(moved), "line 30 holds the needle")
 			require.NotContains(t, screen(press(moved, "esc")), "/needle")
+		})
+	})
+
+	t.Run("sync", func(t *testing.T) {
+		startWithSync := func(sync ui.Syncer) tea.Model {
+			tree, files := stackOf()
+			m := ui.New(context.Background(), tree, ui.Sources{
+				Tree:        memoryTree{tree: tree},
+				Diffs:       memoryDiffs{files: files},
+				Highlighter: plainText{},
+				Viewed:      memoryViewed{},
+				Sync:        sync,
+			})
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			return settle(sized, m.Init())
+		}
+		planned := func() restack.Plan {
+			tree, _ := stackOf()
+			return restack.Plan{Tree: tree, NewCommits: 3, Outcomes: map[string]restack.Outcome{
+				"events":  {Kind: restack.Moves, NewParent: "origin/main"},
+				"handler": {Kind: restack.Conflict, NewParent: "events", Files: []string{"order.go"}},
+				"billing": {Kind: restack.UpToDate, NewParent: "origin/main"},
+			}}
+		}
+
+		t.Run("the footer and the keys screen show S when the sync can run", func(t *testing.T) {
+			m := startWithSync(memorySync{plan: planned()})
+
+			require.Contains(t, screen(m), "S sync")
+			require.Contains(t, screen(press(m, "?")), "fetch the trunk and show the plan of a sync")
+		})
+
+		t.Run("S shows the plan in the Stack panel with an outcome for each branch", func(t *testing.T) {
+			view := screen(press(startWithSync(memorySync{plan: planned()}), "S"))
+
+			require.Contains(t, view, "Stack · sync plan")
+			require.Contains(t, view, "origin/main  3 new commits")
+			require.Regexp(t, `├─ events\s+moves onto origin/main`, view)
+			require.Regexp(t, `│  └─ handler\s+stays: conflict in order.go`, view)
+			require.Regexp(t, `└─ billing\s+up to date`, view)
+			require.Contains(t, view, "esc close")
+		})
+
+		t.Run("esc closes the plan, and the Stack panel shows the tree as it was before", func(t *testing.T) {
+			view := screen(press(startWithSync(memorySync{plan: planned()}), "S", "esc"))
+
+			require.NotContains(t, view, "sync plan")
+			require.NotContains(t, view, "moves onto")
+			require.Contains(t, view, "1 behind parent")
+		})
+
+		t.Run("when the sync cannot run, the footer and the keys screen hide S, and S shows why", func(t *testing.T) {
+			m := startWithSync(memorySync{unavailable: errors.New("sync needs git 2.44 or later, and this is git 2.43.0")})
+
+			require.NotContains(t, screen(m), "S sync")
+			require.NotContains(t, screen(press(m, "?")), "show the plan of a sync")
+			require.Contains(t, screen(press(m, "S")), "sync needs git 2.44 or later, and this is git 2.43.0")
+		})
+
+		t.Run("a plan that fails shows its error in the status line", func(t *testing.T) {
+			view := screen(press(startWithSync(memorySync{planErr: errors.New("git fetch --prune origin: could not read Username")}), "S"))
+
+			require.Contains(t, view, "could not read Username")
+			require.NotContains(t, view, "sync plan")
+		})
+
+		t.Run("without a sync source, S does nothing", func(t *testing.T) {
+			view := screen(press(start(memoryViewed{}), "S"))
+
+			require.NotContains(t, view, "S sync")
+			require.NotContains(t, view, "sync plan")
 		})
 	})
 

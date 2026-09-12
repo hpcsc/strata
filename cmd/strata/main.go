@@ -53,7 +53,9 @@ func newCommand(syncErr error) *cli.Command {
 			&cli.BoolFlag{Name: "list", Aliases: []string{"l"}, Usage: "print the stack and exit"},
 			&cli.StringFlag{Name: "theme", Value: "nord", Usage: "chroma style for syntax highlighting"},
 		},
-		Action: run,
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return run(ctx, cmd, syncErr)
+		},
 		Commands: []*cli.Command{
 			{
 				Name:  "version",
@@ -92,7 +94,7 @@ func newCommand(syncErr error) *cli.Command {
 	}
 }
 
-func run(ctx context.Context, cmd *cli.Command) error {
+func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	repo := git.New(".")
 	trunk, err := trunkOf(ctx, cmd, repo)
 	if err != nil {
@@ -121,11 +123,15 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	if cmd.Bool("remote") && syncErr == nil {
+		syncErr = restack.ErrRemote
+	}
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,
 		Diffs:       diff.NewLoader(repo),
 		Highlighter: syntax.NewHighlighter(cmd.String("theme")),
 		Viewed:      marks,
+		Sync:        restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), syncErr),
 	})
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	return err

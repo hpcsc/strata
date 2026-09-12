@@ -5,13 +5,16 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
 )
 
 type stackPanel struct {
-	tree   stack.Tree
-	filter search.Query
+	tree           stack.Tree
+	plan           *restack.Plan
+	treeBeforePlan stack.Tree
+	filter         search.Query
 	// shown holds the indexes in tree.Branches that show: the branches that
 	// match the filter and the branches they sit on.
 	shown  []int
@@ -48,6 +51,22 @@ func (p *stackPanel) replace(tree stack.Tree) {
 	}
 	p.showBranches()
 	p.keepCursorShown()
+}
+
+func (p *stackPanel) showPlan(plan restack.Plan) {
+	if p.plan == nil {
+		p.treeBeforePlan = p.tree
+	}
+	p.plan = &plan
+	p.replace(plan.Tree)
+}
+
+func (p *stackPanel) closePlan() {
+	if p.plan == nil {
+		return
+	}
+	p.plan = nil
+	p.replace(p.treeBeforePlan)
 }
 
 // setFilter shows the branches that match filter. It reports whether the
@@ -167,7 +186,11 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 	}
 	nameWidth = min(nameWidth, max(20, width*6/10))
 
-	rows := []string{"  " + boldText.Render(p.tree.Trunk)}
+	trunk := "  " + boldText.Render(p.tree.Trunk)
+	if p.plan != nil {
+		trunk += "  " + dimText.Render(plural(p.plan.NewCommits, "new commit"))
+	}
+	rows := []string{trunk}
 	for row, b := range shownTree.Branches {
 		gutter := "  "
 		nameStyle := lipgloss.NewStyle()
@@ -189,6 +212,11 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 		label := dimText.Render(prefix) + highlight(name, p.filter, nameStyle) +
 			strings.Repeat(" ", max(0, nameWidth-lipgloss.Width(prefix)-lipgloss.Width(name)))
 
+		if p.plan != nil {
+			o := p.plan.Outcomes[b.Name]
+			rows = append(rows, gutter+label+"  "+outcomeStyle(o.Kind).Render(o.Text()))
+			continue
+		}
 		stats := dimText.Render(fmt.Sprintf("%-11s %-9s", plural(b.Commits, "commit"), plural(b.Files, "file"))) +
 			" " + addedText.Render(fmt.Sprintf("+%d", b.Insertions)) + " " + deletedText.Render(fmt.Sprintf("-%d", b.Deletions))
 		if b.Parent != p.tree.Trunk && b.Behind > 0 {
@@ -200,6 +228,19 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 		rows = append(rows, gutter+label+"  "+stats)
 	}
 	return window(rows, p.offset, p.height)
+}
+
+func outcomeStyle(kind restack.Kind) lipgloss.Style {
+	switch kind {
+	case restack.UpToDate, restack.Blocked:
+		return dimText
+	case restack.Moves:
+		return addedText
+	case restack.Merged:
+		return viewedText
+	default:
+		return warningText
+	}
 }
 
 // highlight underlines the parts of text that match query.

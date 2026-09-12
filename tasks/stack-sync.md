@@ -559,26 +559,26 @@ The sync is not available on old git, on a version that strata cannot read, and 
 footer and the keys screen do not show `S`, and `S` shows the error in the status line.
 
 **Acceptance Criteria:**
-- [ ] When the sync is available, the footer of the Stack panel shows `S sync`, and the keys screen lists
+- [x] When the sync is available, the footer of the Stack panel shows `S sync`, and the keys screen lists
   `S`.
-- [ ] `S` shows the plan in the Stack panel, and no branch moves. The plan has the trunk line with its count
+- [x] `S` shows the plan in the Stack panel, and no branch moves. The plan has the trunk line with its count
   of new commits, and each branch with its outcome in place of its counts.
-- [ ] While the plan shows, the footer shows `esc close`.
-- [ ] `esc` closes the plan, and the Stack panel shows the tree as it was before.
-- [ ] When the sync is not available, the footer and the keys screen do not show `S`. `S` then shows the
+- [x] While the plan shows, the footer shows `esc close`.
+- [x] `esc` closes the plan, and the Stack panel shows the tree as it was before.
+- [x] When the sync is not available, the footer and the keys screen do not show `S`. `S` then shows the
   error in the status line: the error of `restack.Available`, or the `--remote` error (`TestModel`).
-- [ ] A plan that fails shows its error in the status line (`TestModel`).
-- [ ] In the TUI, a fetch from a remote that needs a password fails with the git error. Nothing asks for
+- [x] A plan that fails shows its error in the status line (`TestModel`).
+- [x] In the TUI, a fetch from a remote that needs a password fails with the git error. Nothing asks for
   the password on the terminal, and the screen stays intact.
-- [ ] `ui.Sources` has a `Sync` source. Its type is an interface that `internal/ui` defines, with
+- [x] `ui.Sources` has a `Sync` source. Its type is an interface that `internal/ui` defines, with
   `Available()`. `cmd/strata/main.go` gives it the restack implementation.
-- [ ] In `internal/ui`, the word "sync" names only the stack sync. The method `Model.sync`, which points the
+- [x] In `internal/ui`, the word "sync" names only the stack sync. The method `Model.sync`, which points the
   Files and Diff panels at the selection, gets a name that says what it does.
-- [ ] `openStrata` in `e2e/testUtils.ts` takes an `env` argument, as `runStrata` does.
-- [ ] e2e, old git: with the old-git `PATH` folder from Task 1, the footer has no `S`, and `S` shows the
+- [x] `openStrata` in `e2e/testUtils.ts` takes an `env` argument, as `runStrata` does.
+- [x] e2e, old git: with the old-git `PATH` folder from Task 1, the footer has no `S`, and `S` shows the
   error.
-- [ ] e2e, current git: after the remote's `main` gets a commit, `S` on `ordersRepo()` shows the plan.
-- [ ] `docs/e2e-tests.md` shows the `env` argument of `openStrata`.
+- [x] e2e, current git: after the remote's `main` gets a commit, `S` on `ordersRepo()` shows the plan.
+- [x] `docs/e2e-tests.md` shows the `env` argument of `openStrata`.
 
 **Affected Files/Modules:**
 - `internal/ui/sources.go`: the `Sync` source and its interface.

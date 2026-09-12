@@ -184,7 +184,7 @@
     },
     {
       "n": 8,
-      "done": false,
+      "done": true,
       "title": "Show the plan in the Stack panel with `S`",
       "language": "Go",
       "testable": true,

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
 )
@@ -28,9 +29,15 @@ type ViewedMarks interface {
 	Toggle(f diff.File) error
 }
 
+type Syncer interface {
+	Available() error
+	Plan(ctx context.Context) (restack.Plan, error)
+}
+
 type Sources struct {
 	Tree        TreeReader
 	Diffs       DiffLoader
 	Highlighter Highlighter
 	Viewed      ViewedMarks
+	Sync        Syncer
 }

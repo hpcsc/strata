@@ -159,13 +159,16 @@ export function ordersRepo(): Repo {
   return repo
 }
 
-export async function openStrata(cwd: string, args: string[] = []): Promise<Session> {
+export async function openStrata(cwd: string, args: string[] = [], env: Record<string, string> = {}): Promise<Session> {
+  const assignments = Object.entries(env)
+    .map(([name, value]) => `${name}='${value.replaceAll("'", `'\\''`)}'`)
+    .join(' ')
   const session = await launchTerminal({
     command: 'sh',
     // Bubble Tea v1 asks the terminal for its background colour at start and
     // waits 5 seconds for a reply that this emulator never sends. termenv does
     // not ask under a screen TERM, and tuistory sets its own TERM for the shell.
-    args: ['-c', `TERM=screen-256color "${getExecutablePath()}" ${args.join(' ')}; echo "EXIT:$?"`],
+    args: ['-c', `TERM=screen-256color ${assignments} "${getExecutablePath()}" ${args.join(' ')}; echo "EXIT:$?"`],
     cwd,
     cols: 160,
     rows: 40,
