@@ -217,7 +217,12 @@ func writeRecord(path string, plan Plan) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	// Pending reads the record without the lock, so the record changes in one rename.
+	next := path + ".next"
+	if err := os.WriteFile(next, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(next, path)
 }
 
 func readRecord(path string) (Plan, bool, error) {

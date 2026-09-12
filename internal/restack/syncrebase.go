@@ -33,8 +33,9 @@ func (s *syncRebase) recordFile() string {
 	return filepath.Join(s.dir, "plan")
 }
 
-// lock lets one strata at a time use the sync worktree, the todo file and the
-// refs in newTipRefs. The system drops the lock when the process ends.
+// lock lets one strata at a time run a sync rebase, which uses the sync
+// worktree, the todo file and the record. The system drops the lock when the
+// process ends.
 func (s *syncRebase) lock() (unlock func(), err error) {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return nil, err
@@ -45,7 +46,10 @@ func (s *syncRebase) lock() (unlock func(), err error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, errors.New("another strata runs a sync rebase in this repository now: try again when it ends")
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, errors.New("another strata runs a sync rebase in this repository now: try again when it ends")
+		}
+		return nil, fmt.Errorf("lock %s: %w", f.Name(), err)
 	}
 	return func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
