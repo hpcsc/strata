@@ -296,7 +296,7 @@
     },
     {
       "n": 12,
-      "done": false,
+      "done": true,
       "title": "Document `strata sync` for users",
       "language": "Markdown",
       "testable": false,

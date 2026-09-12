@@ -24,7 +24,7 @@ milliseconds. One read of the stack uses these sources:
 
 | Step | Source | What strata gets |
 | --- | --- | --- |
-| 1 | `git for-each-ref --no-merged <trunk>` with `%(ahead-behind:<trunk>)` | The listed branches, their tips, and the number of trunk commits that each branch does not have |
+| 1 | `git for-each-ref --no-merged <trunk>` with `%(ahead-behind:<trunk>)`, `%(worktreepath)` and `%(upstream:track)` | The listed branches, their tips, the number of trunk commits that each branch does not have, the worktree that has each branch checked out, and whether the remote deleted the upstream of each branch |
 | 2 | `git rev-list --parents <tips> --not <trunk>` | Each commit that the listed branches have and the trunk does not have, with its parents |
 | 3 | `git rev-parse --git-common-dir` | The folder that holds the reflogs |
 | 4 | `.git/logs/refs/heads/<branch>` | The reflog of each branch, read as a file |
@@ -195,5 +195,6 @@ level, so each branch shows.
 - **The reftable backend:** a repository that stores its refs in reftable has no reflog files, so strata
   uses rule 1 only.
 - **Squash merges:** a branch that GitHub merged with a squash still has commits that the trunk does not
-  have, so strata lists it.
+  have, so strata lists it. `strata sync` finds such a branch and deletes it, as
+  [docs/sync.md](sync.md) tells.
 - **git version:** strata needs git 2.41 or later for `%(ahead-behind:...)`.

@@ -27,7 +27,8 @@ task install
 ```
 
 This builds `strata` into `~/.local/bin`. strata needs Go 1.26 and git 2.41 or later, because it uses the
-`ahead-behind` field of `git for-each-ref`.
+`ahead-behind` field of `git for-each-ref`. `strata sync` needs git 2.44 or later, because it uses
+`git replay`.
 
 ## Use
 
@@ -43,6 +44,22 @@ strata --trunk develop     # use a trunk other than origin/HEAD, origin/main or 
 
 `task demo` opens strata on a throwaway repository with two stacks. The script deletes the repository when
 you quit.
+
+## Sync
+
+`strata sync` gets the new trunk from the remote and moves each stack of local branches onto it. A stack
+with a conflict stays where it is until you resolve the conflict. [docs/sync.md](docs/sync.md) tells how
+the sync works.
+
+```sh
+strata sync                     # fetch the trunk and move each stack that has no conflict
+strata sync --dry-run           # print the plan and change nothing
+strata sync --resolve <branch>  # start a sync rebase for the stack of <branch>
+strata sync --keep-merged       # do not delete the merged branches
+```
+
+In the terminal UI, `S` shows the plan of a sync in the Stack panel, and `enter` moves the stacks. On git
+older than 2.44, strata does not show the sync.
 
 ## Version and update
 
@@ -82,10 +99,14 @@ from `task install`, is not a release, so `strata update` does not replace it un
 | | `t` | Show the files as a tree or as a list of paths. |
 | | `/` | Search the panel that has the focus. See [Search](#search). |
 | | `r` | Read the branches again. |
+| | `S` | Get the trunk from the remote and show the plan of a sync. See [Sync](#sync). |
 | | `?` | Show all keys. |
 | | `q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |
+| Sync plan | `enter` | Move each stack that has no conflict. |
+| | `c` | Resolve the conflict of the stack of the branch in a shell. |
+| | `esc` | Close the plan. |
 | Files | `j` `k` `g` `G` | Move between files and folders. |
 | | `o` | Fold or unfold the folder. On a file, fold the folder that holds it. |
 | | `enter` | Go to the diff. |

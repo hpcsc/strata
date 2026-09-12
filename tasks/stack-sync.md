@@ -802,10 +802,10 @@ sync worktree, and to the move of the resolved stack.
 `docs/stack.md` agrees with the new fields of the read.
 
 **Acceptance Criteria:**
-- [ ] `README.md` has a section for `strata sync` with the four command forms and a link to `docs/sync.md`.
-- [ ] `README.md` gives the git 2.44 need of the sync beside the git 2.41 need of strata.
-- [ ] The Keys table of `README.md` lists `S`, and `enter`, `c` and `esc` in the plan.
-- [ ] `docs/sync.md` covers these subjects for users:
+- [x] `README.md` has a section for `strata sync` with the four command forms and a link to `docs/sync.md`.
+- [x] `README.md` gives the git 2.44 need of the sync beside the git 2.41 need of strata.
+- [x] The Keys table of `README.md` lists `S`, and `enter`, `c` and `esc` in the plan.
+- [x] `docs/sync.md` covers these subjects for users:
   - the goal, and what is out of scope.
   - the steps of a sync.
   - the plan and its outcomes.
@@ -815,14 +815,14 @@ sync worktree, and to the move of the resolved stack.
   - signed commits.
   - the git version.
   - the limits.
-- [ ] `docs/sync.md` uses the terms of `docs/stack.md` (trunk, parent, base, tip), and the design's terms
+- [x] `docs/sync.md` uses the terms of `docs/stack.md` (trunk, parent, base, tip), and the design's terms
   (stack, move, replay, new tip, merged branch, plan, sync worktree, sync rebase).
-- [ ] The data table of `docs/stack.md` names the fields that the `for-each-ref` of step 1 now also reads.
-- [ ] The Limits entry of `docs/stack.md` on squash merges says that `strata sync` finds and deletes merged
+- [x] The data table of `docs/stack.md` names the fields that the `for-each-ref` of step 1 now also reads.
+- [x] The Limits entry of `docs/stack.md` on squash merges says that `strata sync` finds and deletes merged
   branches.
-- [ ] Each command, key, flag, outcome text and path in the documents is the same as what the code prints
+- [x] Each command, key, flag, outcome text and path in the documents is the same as what the code prints
   and accepts.
-- [ ] The documents read as first versions, with plain words, `must` and `can`, and no metaphors.
+- [x] The documents read as first versions, with plain words, `must` and `can`, and no metaphors.
 
 **Affected Files/Modules:**
 - `README.md`: the sync section, the git version, and the keys.

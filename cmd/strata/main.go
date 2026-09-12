@@ -81,7 +81,7 @@ func newCommand(syncErr error) *cli.Command {
 				Hidden:    syncErr != nil,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "dry-run", Usage: "print the plan and change nothing"},
-					&cli.BoolFlag{Name: "keep-merged", Usage: "do not delete the branches that the trunk has merged"},
+					&cli.BoolFlag{Name: "keep-merged", Usage: "do not delete the merged branches"},
 					&cli.StringFlag{Name: "resolve", Usage: "start a sync rebase for the stack of this branch, which stops at its conflict for you to resolve"},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
