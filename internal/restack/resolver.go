@@ -48,6 +48,11 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 	if err != nil {
 		return Pending{}, err
 	}
+	unlock, err := rebase.lock()
+	if err != nil {
+		return Pending{}, err
+	}
+	defer unlock()
 	pending, record, err := r.pending(ctx, rebase)
 	if err != nil {
 		return Pending{}, err
@@ -101,6 +106,11 @@ func (r *Resolver) Finish(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	unlock, err := rebase.lock()
+	if err != nil {
+		return Result{}, err
+	}
+	defer unlock()
 	pending, record, err := r.pending(ctx, rebase)
 	if err != nil {
 		return Result{}, err

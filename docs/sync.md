@@ -181,6 +181,14 @@ stateDiagram-v2
     Moved --> [*]
 ```
 
+One strata at a time can use the sync worktree. While strata starts a sync rebase, moves a resolved stack
+or signs the commits of a sync, it locks `.git/strata/sync/lock`. Another strata that tries one of these
+moves nothing and shows this error:
+
+```
+another strata runs a sync rebase in this repository now: try again when it ends
+```
+
 ## Worktrees
 
 A stack often has its branches checked out in their own worktrees, for example with workmux. strata keeps

@@ -2,10 +2,12 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 const newTipRefs = "refs/strata/sync/"
@@ -31,7 +33,32 @@ func (s *syncRebase) recordFile() string {
 	return filepath.Join(s.dir, "plan")
 }
 
+// lock lets one strata at a time use the sync worktree, the todo file and the
+// refs in newTipRefs. The system drops the lock when the process ends.
+func (s *syncRebase) lock() (unlock func(), err error) {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(s.dir, "lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, errors.New("another strata runs a sync rebase in this repository now: try again when it ends")
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
+}
+
 func (s *syncRebase) commits(ctx context.Context, plan Plan, stacks [][]string) (newTips map[string]string, err error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	moving, stopped, err := s.start(ctx, plan, stacks)
 	defer s.removeWorktree(ctx)
 	if err != nil {

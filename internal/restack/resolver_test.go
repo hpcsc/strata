@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/hpcsc/strata/internal/git"
@@ -115,6 +116,17 @@ func TestResolver(t *testing.T) {
 
 			require.ErrorContains(t, err, "handler has a merge commit")
 			require.Equal(t, before, heads(t, repo))
+			require.NoFileExists(t, filepath.Join(repo.Dir, ".git", "strata", "sync", "plan"))
+		})
+
+		t.Run("refuses to start while another strata runs a sync rebase, and writes no record", func(t *testing.T) {
+			repo := conflicted(t)
+			p := plan(t, repo)
+			holdSyncLock(t, repo)
+
+			_, err := resolver(repo).Start(ctx, p, "events")
+
+			require.ErrorContains(t, err, "another strata runs a sync rebase")
 			require.NoFileExists(t, filepath.Join(repo.Dir, ".git", "strata", "sync", "plan"))
 		})
 
@@ -262,6 +274,21 @@ func TestResolver(t *testing.T) {
 			require.ErrorContains(t, err, "git rebase --continue")
 		})
 
+		t.Run("refuses while another strata runs a sync rebase, and moves no branch", func(t *testing.T) {
+			repo := conflicted(t)
+			_, err := resolver(repo).Start(ctx, plan(t, repo), "events")
+			require.NoError(t, err)
+			resolve(t, repo)
+			before := heads(t, repo)
+			holdSyncLock(t, repo)
+
+			_, err = resolver(repo).Finish(ctx)
+
+			require.ErrorContains(t, err, "another strata runs a sync rebase")
+			require.Equal(t, before, heads(t, repo))
+			require.FileExists(t, filepath.Join(repo.Dir, ".git", "strata", "sync", "plan"))
+		})
+
 		t.Run("with commit.gpgsign true, the resolved commits have signatures", func(t *testing.T) {
 			repo := conflicted(t)
 			repo.SignWithFakeGPG()
@@ -277,4 +304,15 @@ func TestResolver(t *testing.T) {
 			}
 		})
 	})
+}
+
+// holdSyncLock takes the lock of the sync rebase as a second strata does.
+func holdSyncLock(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	dir := filepath.Join(repo.Dir, ".git", "strata", "sync")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	require.NoError(t, err)
+	require.NoError(t, syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB))
+	t.Cleanup(func() { f.Close() })
 }

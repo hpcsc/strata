@@ -341,6 +341,23 @@ func TestMover(t *testing.T) {
 				require.Equal(t, []string{"Name the events"}, signed(t, repo, "origin/main", "events"))
 			})
 
+			t.Run("moves nothing while another strata runs a sync rebase", func(t *testing.T) {
+				repo := gittest.New(t)
+				repo.SwitchNew("events")
+				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.Switch("main")
+				repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+				repo.SignWithFakeGPG()
+				eventsBefore := commit(t, repo, "events")
+				p := plan(t, repo)
+				holdSyncLock(t, repo)
+
+				_, err := restack.NewMover(git.New(repo.Dir)).Move(context.Background(), p)
+
+				require.ErrorContains(t, err, "another strata runs a sync rebase")
+				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			})
+
 			t.Run("moves nothing while a sync rebase waits, and keeps that rebase", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("billing")
