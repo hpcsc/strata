@@ -39,6 +39,7 @@ type Outcome struct {
 	UpstreamGone bool
 	Files        []string
 	Blocker      string
+	Keep         bool
 }
 
 func (o Outcome) Text() string {
@@ -52,6 +53,9 @@ func (o Outcome) Text() string {
 	case Merged:
 		if o.Worktree != "" {
 			return "merged, checked out in " + o.Worktree
+		}
+		if o.Keep {
+			return "merged: strata keeps it"
 		}
 		return "merged: strata deletes it"
 	case Conflict:
@@ -89,6 +93,16 @@ type Plan struct {
 	Outcomes   map[string]Outcome
 }
 
+func (p Plan) KeepMerged() Plan {
+	outcomes := make(map[string]Outcome, len(p.Outcomes))
+	for name, o := range p.Outcomes {
+		o.Keep = o.Kind == Merged
+		outcomes[name] = o
+	}
+	p.Outcomes = outcomes
+	return p
+}
+
 func (p Plan) StacksWithConflict() int {
 	n := 0
 	for _, names := range stacksOf(p.Tree) {
@@ -100,6 +114,22 @@ func (p Plan) StacksWithConflict() int {
 		}
 	}
 	return n
+}
+
+func (p Plan) stackMoves(names []string) bool {
+	changes := false
+	for _, name := range names {
+		switch o := p.Outcomes[name]; o.Kind {
+		case UpToDate:
+		case Moves:
+			changes = true
+		case Merged:
+			changes = changes || !o.Keep && o.Worktree == ""
+		default:
+			return false
+		}
+	}
+	return changes
 }
 
 func stacksOf(tree stack.Tree) [][]string {

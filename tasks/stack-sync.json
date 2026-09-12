@@ -117,7 +117,7 @@
     },
     {
       "n": 5,
-      "done": false,
+      "done": true,
       "title": "Move the stacks that no worktree holds with `strata sync`",
       "language": "Go",
       "testable": true,

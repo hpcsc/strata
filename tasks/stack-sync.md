@@ -396,25 +396,25 @@ stack.
 - When `commit.gpgsign` is true, strata moves nothing until Task 7.
 
 **Acceptance Criteria:**
-- [ ] `strata sync` prints the plan as `--dry-run` does, then moves the stacks.
-- [ ] After the move, each branch of a moved stack points at the new tip in the plan. `strata --list` then
+- [x] `strata sync` prints the plan as `--dry-run` does, then moves the stacks.
+- [x] After the move, each branch of a moved stack points at the new tip in the plan. `strata --list` then
   shows each branch on its parent, with no branch behind its parent.
-- [ ] The transaction that moves the other branches of a stack also deletes its merged branch.
-- [ ] With `--keep-merged`, the merged branch stays, and the plan does not say that strata deletes it.
-- [ ] A merged branch that a worktree has checked out stays.
-- [ ] A branch of a stack can be off its old tip when the stack moves, for example because a commit came
+- [x] The transaction that moves the other branches of a stack also deletes its merged branch.
+- [x] With `--keep-merged`, the merged branch stays, and the plan does not say that strata deletes it.
+- [x] A merged branch that a worktree has checked out stays.
+- [x] A branch of a stack can be off its old tip when the stack moves, for example because a commit came
   after the plan. Then no branch of that stack moves and no merged branch of it is deleted, and
   `strata sync` shows the error and exits 1.
-- [ ] strata runs the checks of Task 4 again before each stack moves. A rebase that started on a branch of
+- [x] strata runs the checks of Task 4 again before each stack moves. A rebase that started on a branch of
   the stack after the plan makes the stack stay.
-- [ ] A stack that stays because of a conflict does not move, the other stacks move, and `strata sync` exits
+- [x] A stack that stays because of a conflict does not move, the other stacks move, and `strata sync` exits
   1.
-- [ ] A stack stays when a worktree has checked out one of its branches that must move, and the plan names
+- [x] A stack stays when a worktree has checked out one of its branches that must move, and the plan names
   that worktree.
-- [ ] When `git config --type=bool commit.gpgsign` is true, `strata sync` moves no branch, and exits 1 with
+- [x] When `git config --type=bool commit.gpgsign` is true, `strata sync` moves no branch, and exits 1 with
   an error that names `commit.gpgsign`.
-- [ ] `strata sync` without `--dry-run` runs the move and does not refuse.
-- [ ] `internal/git` can give text to a git command on its standard input (`RunInput`). A failure gives the
+- [x] `strata sync` without `--dry-run` runs the move and does not refuse.
+- [x] `internal/git` can give text to a git command on its standard input (`RunInput`). A failure gives the
   same `*git.Error` as `Run`.
 
 **Affected Files/Modules:**

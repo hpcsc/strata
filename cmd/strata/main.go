@@ -79,6 +79,7 @@ func newCommand(syncErr error) *cli.Command {
 				Hidden:    syncErr != nil,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "dry-run", Usage: "print the plan and change nothing"},
+					&cli.BoolFlag{Name: "keep-merged", Usage: "do not delete the branches that the trunk has merged"},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					if syncErr != nil {
@@ -180,9 +181,6 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Bool("remote") {
 		return restack.ErrRemote
 	}
-	if !cmd.Bool("dry-run") {
-		return errors.New("strata sync cannot move branches yet: run strata sync --dry-run to print the plan")
-	}
 	repo := git.New(".")
 	trunk, err := trunkOf(ctx, cmd, repo)
 	if err != nil {
@@ -192,12 +190,34 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	printPlan(cmd.Root().Writer, plan)
+	if cmd.Bool("keep-merged") {
+		plan = plan.KeepMerged()
+	}
+	out := cmd.Root().Writer
+	printPlan(out, plan)
+
+	var problems []string
 	switch n := plan.StacksWithConflict(); {
 	case n == 1:
-		return errors.New("1 stack stays because of a conflict")
+		problems = append(problems, "1 stack stays because of a conflict")
 	case n > 1:
-		return fmt.Errorf("%d stacks stay because of conflicts", n)
+		problems = append(problems, fmt.Sprintf("%d stacks stay because of conflicts", n))
+	}
+	if !cmd.Bool("dry-run") {
+		result, err := restack.NewMover(repo).Move(ctx, plan)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "\nMoved %s.\n", plural(result.Moved, "stack"))
+		for _, s := range result.Stayed {
+			fmt.Fprintf(out, "The stack of %s stays: %s\n", s.Stack, s.Reason)
+		}
+		if n := len(result.Stayed); n > 0 {
+			problems = append(problems, plural(n, "stack")+" did not move")
+		}
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
 }

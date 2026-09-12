@@ -19,8 +19,13 @@ func New(dir string) *Repo {
 }
 
 func (r *Repo) Run(ctx context.Context, args ...string) (string, error) {
+	return r.RunInput(ctx, "", args...)
+}
+
+func (r *Repo) RunInput(ctx context.Context, stdin string, args ...string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := r.command(ctx, args)
+	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
