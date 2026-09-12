@@ -21,6 +21,8 @@ checksum:
 changelog:
   sort: asc
 release:
+  # a tag with a prerelease part, such as v0.2.1-42.g4829f92, gives a prerelease
+  prerelease: auto
   github:
     owner: hpcsc
     name: strata

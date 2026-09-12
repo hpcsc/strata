@@ -178,3 +178,8 @@ presses keys, and reads the screen. [docs/e2e-tests.md](docs/e2e-tests.md) tells
 GitHub Actions runs `task check` and `task test:e2e` on each push to a branch. A tag such as `v0.1.0` starts the release
 workflow. The workflow runs the same checks, then goreleaser builds archives for macOS and Linux (amd64
 and arm64) and publishes them to a GitHub release.
+
+Each push to main starts the prerelease workflow. It runs the same checks, then tags the commit with the
+next patch after the latest release, the run number and the commit, for example `v0.2.1-42.g4829f92`.
+goreleaser then publishes the archives to a GitHub prerelease. The workflow keeps the 5 newest prereleases
+of main and deletes the older ones with their tags.
