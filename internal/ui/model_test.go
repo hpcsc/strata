@@ -66,6 +66,9 @@ type memorySync struct {
 	unavailable error
 	plan        restack.Plan
 	planErr     error
+	result      restack.Result
+	moveErr     error
+	moved       *[]restack.Plan
 }
 
 func (m memorySync) Available() error {
@@ -74,6 +77,13 @@ func (m memorySync) Available() error {
 
 func (m memorySync) Plan(context.Context) (restack.Plan, error) {
 	return m.plan, m.planErr
+}
+
+func (m memorySync) Move(_ context.Context, p restack.Plan) (restack.Result, error) {
+	if m.moved != nil {
+		*m.moved = append(*m.moved, p)
+	}
+	return m.result, m.moveErr
 }
 
 type memoryViewed map[string]bool
@@ -472,6 +482,96 @@ func TestModel(t *testing.T) {
 
 			require.NotContains(t, view, "S sync")
 			require.NotContains(t, view, "sync plan")
+		})
+
+		movable := func() restack.Plan {
+			p := planned()
+			p.Outcomes["handler"] = restack.Outcome{Kind: restack.Moves, NewParent: "events"}
+			return p
+		}
+		startMoving := func(sync memorySync, afterMove stack.Tree) tea.Model {
+			tree, files := stackOf()
+			m := ui.New(context.Background(), tree, ui.Sources{
+				Tree:        memoryTree{tree: afterMove},
+				Diffs:       memoryDiffs{files: files},
+				Highlighter: plainText{},
+				Viewed:      memoryViewed{},
+				Sync:        sync,
+			})
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			return settle(sized, m.Init())
+		}
+		restacked := func() stack.Tree {
+			tree, _ := stackOf()
+			tree.Branches[1].Behind = 0
+			return tree
+		}
+
+		t.Run("while the plan shows, the footer tells how many stacks enter moves", func(t *testing.T) {
+			view := screen(press(startMoving(memorySync{plan: movable()}, restacked()), "S"))
+
+			require.Contains(t, view, "enter move 1 stack")
+		})
+
+		t.Run("enter moves the stacks of the plan, reads the branches again, and closes the plan", func(t *testing.T) {
+			var moved []restack.Plan
+			sync := memorySync{plan: movable(), result: restack.Result{Moved: 1}, moved: &moved}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
+
+			require.Equal(t, []restack.Plan{movable()}, moved)
+			require.NotContains(t, view, "sync plan")
+			require.NotContains(t, view, "behind parent")
+			require.Contains(t, view, "Moved 1 stack.")
+		})
+
+		t.Run("enter in a plan with no stack to move moves nothing", func(t *testing.T) {
+			var moved []restack.Plan
+			p := planned()
+			p.Outcomes["events"] = restack.Outcome{Kind: restack.Blocked, NewParent: "origin/main", Blocker: "handler"}
+			sync := memorySync{plan: p, moved: &moved}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
+
+			require.Empty(t, moved)
+			require.Contains(t, view, "the plan moves no stack")
+		})
+
+		t.Run("when the plan is closed, enter goes to the files as before", func(t *testing.T) {
+			var moved []restack.Plan
+			sync := memorySync{plan: movable(), moved: &moved}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "esc", "enter"))
+
+			require.Empty(t, moved)
+			require.Contains(t, view, "o fold")
+		})
+
+		t.Run("a move that fails shows its error in the status line", func(t *testing.T) {
+			sync := memorySync{plan: movable(), moveErr: errors.New("make the commits of the sync: gpg failed to sign the data")}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
+
+			require.Contains(t, view, "gpg failed to sign the data")
+		})
+
+		t.Run("a stack that stays at the move shows why, with the command that finishes the move", func(t *testing.T) {
+			sync := memorySync{plan: movable(), result: restack.Result{Stayed: []restack.Stay{{
+				Stack:  "events",
+				Reason: "handler did not move in /work/handler. To finish the move, run: git -C /work/handler reset --keep refs/strata/sync/handler",
+			}}}}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
+
+			require.Contains(t, view, "git -C /work/handler reset --keep refs/strata/sync/handler")
+		})
+
+		t.Run("the keys screen lists enter and esc for the plan", func(t *testing.T) {
+			view := screen(press(startMoving(memorySync{plan: movable()}, restacked()), "?"))
+
+			require.Contains(t, view, "move the stacks that the plan moves")
+			require.Contains(t, view, "close the plan")
 		})
 	})
 

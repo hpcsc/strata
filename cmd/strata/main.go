@@ -131,7 +131,7 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		Diffs:       diff.NewLoader(repo),
 		Highlighter: syntax.NewHighlighter(cmd.String("theme")),
 		Viewed:      marks,
-		Sync:        restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), syncErr),
+		Sync:        restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), restack.NewMover(repo), syncErr),
 	})
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	return err

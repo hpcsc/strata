@@ -19,6 +19,23 @@ describe('the S key', () => {
     expect(screen).toContain('esc close')
   })
 
+  it('then enter moves the stacks, and the Stack panel shows the new tree', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('README.md', '# shop\n\nOpen all day\n', 'Open all day')
+    const strata = await openStrata(repo.dir)
+    await strata.waitForText('S sync')
+    await strata.type('S')
+    await strata.waitForText('enter move 2 stacks')
+
+    await strata.press('enter')
+
+    const screen = await strata.waitForText('Moved 2 stacks.')
+    expect(screen).not.toContain('sync plan')
+    expect(screen).toMatch(/└─ orders-handler\s+2 commits/)
+    expect(screen).not.toContain('behind parent')
+    expect(repo.git('status', '--porcelain')).toBe('')
+  })
+
   it('shows the error of a fetch that needs a passphrase, and nothing asks for it on the screen', async () => {
     const repo = ordersRepo()
     const askPassphrase = join(scratchDir(), 'ask-passphrase')

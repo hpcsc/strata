@@ -631,18 +631,18 @@ to Task 7. strata then reads the branches again and closes the plan. The footer 
 `enter` moves.
 
 **Acceptance Criteria:**
-- [ ] While the plan shows, the footer shows `enter move <n> stack` (or `stacks`) beside `esc close`, where
+- [x] While the plan shows, the footer shows `enter move <n> stack` (or `stacks`) beside `esc close`, where
   `<n>` is the number of stacks that move.
-- [ ] `enter` moves those stacks, reads the branches again, and closes the plan.
-- [ ] After `enter`, the Stack panel shows the new tree: no branch that moved is behind its parent, and the
+- [x] `enter` moves those stacks, reads the branches again, and closes the plan.
+- [x] After `enter`, the Stack panel shows the new tree: no branch that moved is behind its parent, and the
   children of a deleted merged branch sit on the trunk.
-- [ ] When the plan is closed, `enter` keeps its current meaning in each panel.
-- [ ] `enter` in a plan with no stack to move moves nothing.
-- [ ] A move that fails, for example on a branch that changed after the plan, shows the error in the status
+- [x] When the plan is closed, `enter` keeps its current meaning in each panel.
+- [x] `enter` in a plan with no stack to move moves nothing.
+- [x] A move that fails, for example on a branch that changed after the plan, shows the error in the status
   line.
-- [ ] A branch whose `reset --keep` failed shows the command that finishes its move.
-- [ ] The keys screen lists `enter` and `esc` for the plan.
-- [ ] e2e: after the remote's `main` gets a commit, `S` and then `enter` on `ordersRepo()` make the Stack
+- [x] A branch whose `reset --keep` failed shows the command that finishes its move.
+- [x] The keys screen lists `enter` and `esc` for the plan.
+- [x] e2e: after the remote's `main` gets a commit, `S` and then `enter` on `ordersRepo()` make the Stack
   panel show the new tree, with no `behind parent` on `orders-handler`.
 
 **Affected Files/Modules:**

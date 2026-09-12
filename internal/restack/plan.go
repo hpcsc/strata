@@ -128,6 +128,16 @@ func (p Plan) StacksWithConflict() int {
 	return n
 }
 
+func (p Plan) StacksThatMove() int {
+	n := 0
+	for _, names := range stacksOf(p.Tree) {
+		if p.stackMoves(names) {
+			n++
+		}
+	}
+	return n
+}
+
 func (p Plan) stackMoves(names []string) bool {
 	changes := false
 	for _, name := range names {

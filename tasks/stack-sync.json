@@ -220,7 +220,7 @@
     },
     {
       "n": 9,
-      "done": false,
+      "done": true,
       "title": "Move the stacks from the plan with `enter`",
       "language": "Go",
       "testable": true,

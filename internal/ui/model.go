@@ -22,13 +22,20 @@ const (
 )
 
 type treeLoaded struct {
-	tree stack.Tree
-	err  error
+	tree   stack.Tree
+	err    error
+	status string
+	notice string
 }
 
 type planLoaded struct {
 	plan restack.Plan
 	err  error
+}
+
+type stacksMoved struct {
+	result restack.Result
+	err    error
 }
 
 type Model struct {
@@ -54,6 +61,8 @@ type Model struct {
 	prompt   prompt
 	initial  tea.Cmd
 	planning bool
+	moving   bool
+	notice   string
 }
 
 func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
@@ -86,13 +95,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.status = ""
+		m.status, m.notice = msg.status, msg.notice
 		m.cache.clear()
 		m.filesKey = ""
 		m.stack.plan = nil
 		m.stack.replace(msg.tree)
 		m.layout()
 		return m, m.showSelection()
+	case stacksMoved:
+		m.moving = false
+		m.stack.plan = nil
+		if msg.err != nil {
+			return m, m.readTree(msg.err.Error(), "")
+		}
+		report := "Moved " + plural(msg.result.Moved, "stack") + "."
+		if len(msg.result.Stayed) == 0 {
+			return m, m.readTree("", report)
+		}
+		for _, s := range msg.result.Stayed {
+			report += " The stack of " + s.Stack + " stays: " + s.Reason
+		}
+		return m, m.readTree(report, "")
 	case planLoaded:
 		m.planning = false
 		if msg.err != nil {
@@ -118,7 +141,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.help = false
 		return m, nil
 	}
-	m.status = ""
+	m.status, m.notice = "", ""
 	if m.prompt.open {
 		return m.promptKey(msg)
 	}
@@ -192,6 +215,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			return m, m.setQuery(focusStack, "")
 		case "enter", "l", "right":
+			if key == "enter" && m.stack.plan != nil {
+				return m, m.moveStacks()
+			}
 			m.focus = focusFiles
 		}
 	case focusFiles:
@@ -402,11 +428,32 @@ func (m *Model) planSync() tea.Cmd {
 	}
 }
 
+func (m *Model) moveStacks() tea.Cmd {
+	if m.moving {
+		return nil
+	}
+	plan := *m.stack.plan
+	if plan.StacksThatMove() == 0 {
+		m.notice = "the plan moves no stack"
+		return nil
+	}
+	m.moving = true
+	ctx, sync := m.ctx, m.sources.Sync
+	return func() tea.Msg {
+		result, err := sync.Move(ctx, plan)
+		return stacksMoved{result: result, err: err}
+	}
+}
+
 func (m Model) reloadTree() tea.Cmd {
+	return m.readTree("", "")
+}
+
+func (m Model) readTree(status, notice string) tea.Cmd {
 	ctx, tree := m.ctx, m.sources.Tree
 	return func() tea.Msg {
 		t, err := tree.Read(ctx)
-		return treeLoaded{tree: t, err: err}
+		return treeLoaded{tree: t, err: err, status: status, notice: notice}
 	}
 }
 
@@ -632,6 +679,12 @@ func (m Model) footer() string {
 	if m.planning {
 		return dimText.Render(" fetching the trunk and planning the sync…")
 	}
+	if m.moving {
+		return dimText.Render(" moving the stacks…")
+	}
+	if m.notice != "" {
+		return viewedText.Render(" " + m.notice)
+	}
 	hints := map[focus]string{
 		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
 		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
@@ -641,7 +694,10 @@ func (m Model) footer() string {
 		hints[focusStack] = strings.Replace(hints[focusStack], "r refresh", "r refresh · S sync", 1)
 	}
 	if m.stack.plan != nil {
-		hints[focusStack] = "j/k branch · esc close · ⏎ files · tab panel · ? keys · q quit"
+		hints[focusStack] = "j/k branch · esc close · tab panel · ? keys · q quit"
+		if n := m.stack.plan.StacksThatMove(); n > 0 {
+			hints[focusStack] = "j/k branch · enter move " + plural(n, "stack") + " · esc close · tab panel · ? keys · q quit"
+		}
 	}
 	line := hints[m.focus]
 	if query := m.query(m.focus); !query.Empty() {
@@ -669,13 +725,15 @@ func helpLines(canSync bool) []string {
 	text := keysText
 	if canSync {
 		text = strings.Replace(text, "read the branches again\n",
-			"read the branches again\n    S            fetch the trunk and show the plan of a sync\n", 1) + syncKeysText
+			"read the branches again\n    S            fetch the trunk and show the plan of a sync\n", 1)
+		text = strings.Replace(text, "go to the files of the branch\n", "go to the files of the branch\n"+syncKeysText, 1)
 	}
 	return strings.Split(strings.TrimPrefix(text, "\n"), "\n")
 }
 
 const syncKeysText = `
   Sync plan
+    enter        move the stacks that the plan moves
     esc          close the plan
 `
 
