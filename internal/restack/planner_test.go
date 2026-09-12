@@ -437,7 +437,7 @@ func TestPlanner(t *testing.T) {
 				require.Equal(t, []string{"events: stays: changes in " + realPath(t, worktree.Dir) + ": README.md"}, outcomes(p))
 			})
 
-			t.Run("a staged change in a file that the move changes keeps the branch where it is", func(t *testing.T) {
+			t.Run("a staged change in a file that the move changes makes the branch stay", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
 				repo.Commit("events.go", "package orders\n", "Name the events")
@@ -452,7 +452,7 @@ func TestPlanner(t *testing.T) {
 				require.Equal(t, []string{"events: stays: changes in " + realPath(t, worktree.Dir) + ": README.md"}, outcomes(p))
 			})
 
-			t.Run("an untracked file where the move adds a file keeps the branch where it is", func(t *testing.T) {
+			t.Run("an untracked file where the move adds a file makes the branch stay", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
 				repo.Commit("events.go", "package orders\n", "Name the events")

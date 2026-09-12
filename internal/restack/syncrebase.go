@@ -65,7 +65,7 @@ func (s *syncRebase) commits(ctx context.Context, plan Plan, stacks [][]string) 
 		if stopped {
 			_, _ = s.git.Run(ctx, "-C", s.worktree(), "rebase", "--abort")
 		}
-		_ = s.forget(ctx, moving)
+		_ = s.deleteNewTips(ctx, moving)
 		return nil, err
 	}
 	newTips, err = s.newTips(ctx)
@@ -188,7 +188,7 @@ func (s *syncRebase) newTips(ctx context.Context) (map[string]string, error) {
 	return tips, nil
 }
 
-func (s *syncRebase) forget(ctx context.Context, names []string) error {
+func (s *syncRebase) deleteNewTips(ctx context.Context, names []string) error {
 	tips, err := s.newTips(ctx)
 	if err != nil {
 		return err
@@ -215,7 +215,7 @@ func (s *syncRebase) removeWorktree(ctx context.Context) {
 	}
 }
 
-func forgetMovedTips(ctx context.Context, git runner) error {
+func deleteMovedTips(ctx context.Context, git runner) error {
 	out, err := git.Run(ctx, "for-each-ref", "--format=%(refname)%00%(objectname)", newTipRefs, "refs/heads/")
 	if err != nil {
 		return err

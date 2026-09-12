@@ -66,7 +66,7 @@ func (m *Mover) moveToNewTips(ctx context.Context, plan Plan, stacks [][]string)
 			result.Moved++
 		}
 	}
-	return result, forgetMovedTips(ctx, m.git)
+	return result, deleteMovedTips(ctx, m.git)
 }
 
 func (m *Mover) signs(ctx context.Context) (bool, error) {

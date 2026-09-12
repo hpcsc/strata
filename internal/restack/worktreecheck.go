@@ -66,7 +66,7 @@ func (w *worktreeCheck) outcome(ctx context.Context, b stack.Branch, o Outcome) 
 		return Outcome{}, err
 	}
 	if files := overlap(changed, strings.Split(strings.TrimRight(out, "\x00"), "\x00")); len(files) > 0 {
-		return Outcome{Kind: Changes, NewParent: o.NewParent, Worktree: b.Worktree, Files: files}, nil
+		return Outcome{Kind: LocalChanges, NewParent: o.NewParent, Worktree: b.Worktree, Files: files}, nil
 	}
 	return o, nil
 }

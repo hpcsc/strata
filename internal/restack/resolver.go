@@ -63,7 +63,7 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 	case RebaseDone:
 		return Pending{}, fmt.Errorf("the sync rebase for the stack of %s is done: run strata sync to move the stack", pending.Stack)
 	case RebaseAborted:
-		if err := r.forgetAborted(ctx, rebase, record); err != nil {
+		if err := r.removeAborted(ctx, rebase, record); err != nil {
 			return Pending{}, err
 		}
 	}
@@ -79,11 +79,11 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 	if err := writeRecord(rebase.recordFile(), resolve); err != nil {
 		return Pending{}, err
 	}
-	if err := rebase.forget(ctx, names); err != nil {
+	if err := rebase.deleteNewTips(ctx, names); err != nil {
 		return Pending{}, err
 	}
 	if _, stopped, err := rebase.start(ctx, resolve, [][]string{names}); err != nil && !stopped {
-		_ = r.forgetAborted(ctx, rebase, resolve)
+		_ = r.removeAborted(ctx, rebase, resolve)
 		return Pending{}, err
 	}
 	pending, _, err = r.pending(ctx, rebase)
@@ -121,7 +121,7 @@ func (r *Resolver) Finish(ctx context.Context) (Result, error) {
 	case RebaseWaits:
 		return Result{}, pending.WaitsError()
 	case RebaseAborted:
-		return Result{}, r.forgetAborted(ctx, rebase, record)
+		return Result{}, r.removeAborted(ctx, rebase, record)
 	}
 	newTips, err := rebase.newTips(ctx)
 	if err != nil {
@@ -159,13 +159,13 @@ func (r *Resolver) pending(ctx context.Context, rebase *syncRebase) (Pending, Pl
 	return pending, record, nil
 }
 
-func (r *Resolver) forgetAborted(ctx context.Context, rebase *syncRebase, record Plan) error {
+func (r *Resolver) removeAborted(ctx context.Context, rebase *syncRebase, record Plan) error {
 	rebase.removeWorktree(ctx)
 	var names []string
 	for _, b := range record.Tree.Branches {
 		names = append(names, b.Name)
 	}
-	if err := rebase.forget(ctx, names); err != nil {
+	if err := rebase.deleteNewTips(ctx, names); err != nil {
 		return err
 	}
 	return removeRecord(rebase.recordFile())

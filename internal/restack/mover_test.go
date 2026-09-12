@@ -142,7 +142,7 @@ func TestMover(t *testing.T) {
 			require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, repo, "handler"))
 		})
 
-		t.Run("a branch that changed after the plan keeps its whole stack where it is", func(t *testing.T) {
+		t.Run("a branch that changed after the plan makes its whole stack stay", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
 			repo.Commit("events.go", "package orders\n", "Name the events")
@@ -164,7 +164,7 @@ func TestMover(t *testing.T) {
 			require.Equal(t, eventsBefore, commit(t, repo, "handler"))
 		})
 
-		t.Run("a rebase that starts on a branch after the plan keeps its stack where it is", func(t *testing.T) {
+		t.Run("a rebase that starts on a branch after the plan makes its stack stay", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
 			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
@@ -541,7 +541,7 @@ func TestMover(t *testing.T) {
 				require.Equal(t, " M events.go\n", worktree.Git("status", "--porcelain"))
 			})
 
-			t.Run("a commit in a worktree after the plan keeps the stack where it is", func(t *testing.T) {
+			t.Run("a commit in a worktree after the plan makes the stack stay", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
 				repo.Commit("events.go", "package orders\n", "Name the events")
@@ -564,7 +564,7 @@ func TestMover(t *testing.T) {
 				require.Equal(t, handlerAfterCommit, commit(t, repo, "handler"))
 			})
 
-			t.Run("changes after the plan in a file that the move changes keep the stack where it is", func(t *testing.T) {
+			t.Run("changes after the plan in a file that the move changes make the stack stay", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
 				repo.Commit("events.go", "package orders\n", "Name the events")

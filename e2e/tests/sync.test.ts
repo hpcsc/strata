@@ -230,7 +230,7 @@ describe('strata sync --dry-run', () => {
     expect(lines).toHaveLength(5)
   })
 
-  it('keeps a stack with a conflict where it is, moves the other stacks, and exits 1', async () => {
+  it('shows that a stack with a conflict stays while the other stacks move, and exits 1', async () => {
     const repo = ordersRepo()
     repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
 

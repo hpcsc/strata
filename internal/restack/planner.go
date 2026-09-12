@@ -31,7 +31,7 @@ func NewPlanner(git runner, fetch Fetch, trunk string, patterns []string) *Plann
 }
 
 func (p *Planner) Plan(ctx context.Context) (Plan, error) {
-	before, ref, err := p.resolve(ctx, "--symbolic-full-name", p.trunk)
+	before, ref, err := p.revParseTrunk(ctx, "--symbolic-full-name", p.trunk)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -45,7 +45,7 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	tip, treeOfTip, err := p.resolve(ctx, p.trunk+"^{tree}")
+	tip, treeOfTip, err := p.revParseTrunk(ctx, p.trunk+"^{tree}")
 	if err != nil {
 		return Plan{}, err
 	}
@@ -76,16 +76,16 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 	return Plan{Tree: tree, NewCommits: newCommits, TrunkTip: tip, Outcomes: outcomes}, nil
 }
 
-func (p *Planner) resolve(ctx context.Context, args ...string) (trunk, answer string, err error) {
+func (p *Planner) revParseTrunk(ctx context.Context, args ...string) (trunk, ofArgs string, err error) {
 	out, err := p.git.Run(ctx, append([]string{"rev-parse", p.trunk}, args...)...)
 	if err != nil {
 		return "", "", err
 	}
-	answers := lines(out)
-	if len(answers) != 2 {
+	parsed := lines(out)
+	if len(parsed) != 2 {
 		return "", "", fmt.Errorf("find the trunk %s: git rev-parse printed %q", p.trunk, out)
 	}
-	return answers[0], answers[1], nil
+	return parsed[0], parsed[1], nil
 }
 
 func (p *Planner) newCommits(ctx context.Context, before, tip string) (int, error) {

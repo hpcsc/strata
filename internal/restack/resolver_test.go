@@ -223,7 +223,7 @@ func TestResolver(t *testing.T) {
 			require.Empty(t, repo.Git("for-each-ref", "refs/strata/"))
 		})
 
-		t.Run("a branch that changed after the resolve keeps the stack where it is", func(t *testing.T) {
+		t.Run("a branch that changed after the resolve makes the stack stay", func(t *testing.T) {
 			repo := conflicted(t)
 			_, err := resolver(repo).Start(ctx, plan(t, repo), "events")
 			require.NoError(t, err)

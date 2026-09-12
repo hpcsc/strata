@@ -17,13 +17,13 @@ const (
 	Loop
 	Rebasing
 	WorktreeGone
-	Changes
+	LocalChanges
 	Stale
 )
 
 func (k Kind) blocksStack() bool {
 	switch k {
-	case Conflict, MergeCommit, Loop, Rebasing, WorktreeGone, Changes, Stale:
+	case Conflict, MergeCommit, Loop, Rebasing, WorktreeGone, LocalChanges, Stale:
 		return true
 	}
 	return false
@@ -74,7 +74,7 @@ func (o Outcome) Text() string {
 		return "stays: a rebase in " + o.Worktree + " uses it"
 	case WorktreeGone:
 		return "stays: its worktree " + o.Worktree + " is not there; run git worktree prune if you deleted it"
-	case Changes:
+	case LocalChanges:
 		return "stays: changes in " + o.Worktree + ": " + strings.Join(o.Files, ", ")
 	case Stale:
 		return "stays: it changed in " + o.Worktree
