@@ -45,6 +45,24 @@ func (r *Repo) Check(ctx context.Context, args ...string) (bool, error) {
 	return false, &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
 }
 
+// Try runs a git command for which exit status 1 is an answer, not a failure:
+// ok is false, and out still holds what git printed.
+func (r *Repo) Try(ctx context.Context, args ...string) (out string, ok bool, err error) {
+	var stdout, stderr bytes.Buffer
+	cmd := r.command(ctx, args)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err == nil {
+		return stdout.String(), true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return stdout.String(), false, nil
+	}
+	return "", false, &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
+}
+
 func (r *Repo) Version(ctx context.Context) (Version, error) {
 	out, err := r.Run(ctx, "version")
 	if err != nil {

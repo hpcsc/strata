@@ -41,7 +41,7 @@
     },
     {
       "n": 2,
-      "done": false,
+      "done": true,
       "title": "Find the merged branches in the plan",
       "language": "Go",
       "testable": true,

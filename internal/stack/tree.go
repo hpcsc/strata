@@ -15,7 +15,9 @@ type Branch struct {
 	Insertions int
 	Deletions  int
 	// Behind counts the commits on Parent that this branch does not have.
-	Behind int
+	Behind       int
+	Worktree     string
+	UpstreamGone bool
 }
 
 // Tree lists branches depth-first: every parent comes before its children.

@@ -4,6 +4,7 @@ package stack_test
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -194,6 +195,39 @@ func TestReader(t *testing.T) {
 			events := branch(t, read(t, repo), "events")
 
 			require.Equal(t, strings.TrimSpace(repo.Git("rev-parse", "events")), events.Tip)
+		})
+
+		t.Run("gives the worktree that has the branch checked out", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			worktreeDir, err := filepath.EvalSymlinks(worktree.Dir)
+			require.NoError(t, err)
+
+			tree := read(t, repo)
+
+			require.Equal(t, worktreeDir, branch(t, tree, "events").Worktree)
+			require.Empty(t, branch(t, tree, "handler").Worktree)
+		})
+
+		t.Run("marks a branch whose remote branch the remote deleted", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Git("push", "-q", "-u", "origin", "events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Git("push", "-q", "-u", "origin", "handler")
+			repo.Git("push", "-q", "origin", "--delete", "events")
+
+			tree := read(t, repo)
+
+			require.True(t, branch(t, tree, "events").UpstreamGone)
+			require.False(t, branch(t, tree, "handler").UpstreamGone)
 		})
 
 		t.Run("names the checked-out branch as current", func(t *testing.T) {

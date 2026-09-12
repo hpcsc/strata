@@ -4,6 +4,7 @@ package restack_test
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -123,6 +124,109 @@ func TestPlanner(t *testing.T) {
 			require.Equal(t, "moves onto origin/main", p.Outcomes["events"].Text())
 
 			require.Equal(t, before, heads(t, repo))
+		})
+	})
+
+	t.Run("merged", func(t *testing.T) {
+		t.Run("a branch that the remote squash merged is merged, and strata deletes it", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Commit("placed.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.Switch("main")
+			repo.SquashMergeOnOrigin("events")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: merged: strata deletes it"}, outcomes(p))
+		})
+
+		t.Run("the children of a merged branch move onto the trunk with only their own commits", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.SquashMergeOnOrigin("events")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: merged: strata deletes it", "handler: moves onto origin/main"}, outcomes(p))
+			require.Equal(t, 1, p.Tree.Branches[p.Tree.Index("handler")].Commits)
+		})
+
+		t.Run("a merged branch that a worktree has checked out stays", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
+			worktree, err := filepath.EvalSymlinks(repo.Worktree("events").Dir)
+			require.NoError(t, err)
+			repo.SquashMergeOnOrigin("events")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: merged, checked out in " + worktree, "handler: moves onto origin/main"}, outcomes(p))
+		})
+
+		t.Run("a child that the remote merged too is merged, and its children go onto the trunk", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.SwitchNew("api")
+			repo.Commit("api.go", "package api\n", "Expose the handler")
+			repo.SquashMergeOnOrigin("events")
+			repo.SquashMergeOnOrigin("handler")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{
+				"events: merged: strata deletes it",
+				"handler: merged: strata deletes it",
+				"api: moves onto origin/main",
+			}, outcomes(p))
+		})
+
+		t.Run("a branch whose changes the trunk has only in part is not merged", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Commit("placed.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.CommitOnOrigin("events.go", "package orders\n", "Pick the events file into main")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main"}, outcomes(p))
+		})
+
+		t.Run("a branch whose commits change nothing in total is not merged", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Git("rm", "-q", "events.go")
+			repo.Git("commit", "-q", "-m", "Remove the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main"}, outcomes(p))
+		})
+
+		t.Run("a branch whose remote branch is gone but whose changes the trunk does not have moves, with a note", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Git("push", "-q", "-u", "origin", "events")
+			repo.Git("push", "-q", "origin", "--delete", "events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+
+			p := plan(t, repo, "origin/main")
+
+			require.Equal(t, []string{"events: moves onto origin/main; remote branch gone, not merged"}, outcomes(p))
 		})
 	})
 }

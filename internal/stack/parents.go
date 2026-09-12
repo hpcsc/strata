@@ -6,10 +6,12 @@ import (
 )
 
 type tip struct {
-	name        string
-	ref         string
-	commit      string
-	behindTrunk int
+	name         string
+	ref          string
+	commit       string
+	behindTrunk  int
+	worktree     string
+	upstreamGone bool
 }
 
 type reflogEntry struct {

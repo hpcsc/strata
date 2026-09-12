@@ -226,22 +226,22 @@ A merged branch that a worktree has checked out stays. A branch whose remote bra
 changes the trunk does not have, gets a note and moves as usual.
 
 **Acceptance Criteria:**
-- [ ] A branch on the trunk whose changes the new trunk has, after a squash merge in the remote, shows
+- [x] A branch on the trunk whose changes the new trunk has, after a squash merge in the remote, shows
   `merged: strata deletes it`.
-- [ ] A merged branch that a worktree has checked out shows `merged, checked out in <worktree>` with the
+- [x] A merged branch that a worktree has checked out shows `merged, checked out in <worktree>` with the
   path of that worktree. The plan does not mark it for deletion.
-- [ ] The children of a merged branch sit on the trunk in the plan, and show `moves onto <trunk>`. The
+- [x] The children of a merged branch sit on the trunk in the plan, and show `moves onto <trunk>`. The
   commits that they move are only their own commits, not those of the merged branch.
-- [ ] When the new trunk also has the changes of a child of a merged branch (two branches of one stack
+- [x] When the new trunk also has the changes of a child of a merged branch (two branches of one stack
   merged between two syncs), that child is merged too, and its children go onto the trunk.
-- [ ] Some branches show `[gone]` in `%(upstream:track)` after the fetch, because the remote deleted the
+- [x] Some branches show `[gone]` in `%(upstream:track)` after the fetch, because the remote deleted the
   branch and `fetch --prune` removed its remote-tracking ref. When the trunk does not have the changes of
   such a branch, it gets the note `remote branch gone, not merged` and still shows its move.
-- [ ] `stack.Branch` carries `Worktree` from `%(worktreepath)` and `Gone` from `%(upstream:track)`. The
+- [x] `stack.Branch` carries `Worktree` from `%(worktreepath)` and `Gone` from `%(upstream:track)`. The
   `for-each-ref` that the reader runs now fills both, so the read adds no process.
-- [ ] The existing `TestReader` scenarios pass without edits.
-- [ ] `gittest` has a helper that squash merges a branch into the remote's `main`.
-- [ ] `gittest` has a helper that checks out an existing branch in a new worktree.
+- [x] The existing `TestReader` scenarios pass without edits.
+- [x] `gittest` has a helper that squash merges a branch into the remote's `main`.
+- [x] `gittest` has a helper that checks out an existing branch in a new worktree.
 
 **Affected Files/Modules:**
 - `internal/stack/tree.go`, `internal/stack/reader.go`: `Worktree` and `Gone`.

@@ -44,11 +44,25 @@ func (r *Repo) Commit(path, content, message string) {
 
 func (r *Repo) CommitOnOrigin(path, content, message string) {
 	r.t.Helper()
-	dir := filepath.Join(r.t.TempDir(), "teammate")
-	run(r.t, filepath.Dir(dir), "clone", "-q", r.origin, dir)
-	teammate := &Repo{t: r.t, Dir: dir, origin: r.origin}
+	teammate := r.teammate()
 	teammate.Commit(path, content, message)
 	teammate.Git("push", "-q", "origin", "main")
+}
+
+func (r *Repo) SquashMergeOnOrigin(branch string) {
+	r.t.Helper()
+	teammate := r.teammate()
+	teammate.Git("fetch", "-q", r.Dir, branch)
+	teammate.Git("merge", "-q", "--squash", "FETCH_HEAD")
+	teammate.Git("commit", "-q", "-m", "Merge "+branch)
+	teammate.Git("push", "-q", "origin", "main")
+}
+
+func (r *Repo) teammate() *Repo {
+	r.t.Helper()
+	dir := filepath.Join(r.t.TempDir(), "teammate")
+	run(r.t, filepath.Dir(dir), "clone", "-q", r.origin, dir)
+	return &Repo{t: r.t, Dir: dir, origin: r.origin}
 }
 
 func (r *Repo) Write(path, content string) {
@@ -71,9 +85,20 @@ func (r *Repo) Switch(branch string) {
 func (r *Repo) WorktreeAtCommit(branch, from string) *Repo {
 	r.t.Helper()
 	commit := strings.TrimSpace(r.Git("rev-parse", from))
-	dir := filepath.Join(filepath.Dir(r.Dir), "worktree-"+strings.ReplaceAll(branch, "/", "-"))
+	dir := r.worktreeDir(branch)
 	r.Git("worktree", "add", "-q", "-b", branch, dir, commit)
-	return &Repo{t: r.t, Dir: dir}
+	return &Repo{t: r.t, Dir: dir, origin: r.origin}
+}
+
+func (r *Repo) Worktree(branch string) *Repo {
+	r.t.Helper()
+	dir := r.worktreeDir(branch)
+	r.Git("worktree", "add", "-q", dir, branch)
+	return &Repo{t: r.t, Dir: dir, origin: r.origin}
+}
+
+func (r *Repo) worktreeDir(branch string) string {
+	return filepath.Join(filepath.Dir(r.Dir), "worktree-"+strings.ReplaceAll(branch, "/", "-"))
 }
 
 func run(t testing.TB, dir string, args ...string) string {

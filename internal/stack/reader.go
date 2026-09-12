@@ -98,18 +98,19 @@ func (r *Reader) Commits(ctx context.Context, b Branch) ([]Commit, error) {
 }
 
 func (r *Reader) tips(ctx context.Context) ([]tip, error) {
-	format := "--format=%(refname:short)%00%(refname)%00%(objectname)%00%(ahead-behind:" + r.trunk + ")"
+	format := "--format=%(refname:short)%00%(refname)%00%(objectname)%00%(ahead-behind:" + r.trunk + ")" +
+		"%00%(worktreepath)%00%(upstream:track)"
 	out, err := r.git.Run(ctx, append([]string{"for-each-ref", "--no-merged", r.trunk, format}, r.patterns...)...)
 	if err != nil {
 		return nil, err
 	}
 	var tips []tip
 	for _, line := range lines(out) {
-		fields := strings.SplitN(line, "\x00", 4)
-		if len(fields) != 4 || fields[0] == r.trunk || fields[0] == strings.TrimPrefix(r.trunk, "origin/") {
+		fields := strings.SplitN(line, "\x00", 6)
+		if len(fields) != 6 || fields[0] == r.trunk || fields[0] == strings.TrimPrefix(r.trunk, "origin/") {
 			continue
 		}
-		t := tip{name: fields[0], ref: fields[1], commit: fields[2]}
+		t := tip{name: fields[0], ref: fields[1], commit: fields[2], worktree: fields[4], upstreamGone: fields[5] == "[gone]"}
 		if counts := strings.Fields(fields[3]); len(counts) == 2 {
 			t.behindTrunk, _ = strconv.Atoi(counts[1])
 		}
@@ -169,7 +170,7 @@ func (r *Reader) place(g *graph, tips []tip, parents map[string]link) []Branch {
 	branches := make([]Branch, len(placements))
 	for i, p := range placements {
 		t, parent := byName[p.name], parents[p.name]
-		b := Branch{Name: p.name, Tip: t.commit, Level: p.level}
+		b := Branch{Name: p.name, Tip: t.commit, Level: p.level, Worktree: t.worktree, UpstreamGone: t.upstreamGone}
 		if parent.parent == "" {
 			b.Parent, b.Behind, b.Commits = r.trunk, t.behindTrunk, g.count(t.commit)
 			b.Base, _ = g.forkPoint(t.commit)
