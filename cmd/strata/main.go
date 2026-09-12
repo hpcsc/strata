@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/progress"
@@ -138,7 +138,7 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		Viewed:      marks,
 		Sync:        sync,
 	})
-	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	_, err = tea.NewProgram(model, tea.WithContext(ctx)).Run()
 	return err
 }
 

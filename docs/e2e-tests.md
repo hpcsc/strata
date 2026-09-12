@@ -98,33 +98,21 @@ Two helpers start strata:
 | Helper | Use for | How it works |
 | --- | --- | --- |
 | `runStrata(cwd, args, env)` | Commands that print and stop, such as `--list`, `version` and `update` | Starts strata as a child process with pipes. It gives stdout, stderr and the exit status. |
-| `openStrata(cwd, args, env)` | The screen | Starts `sh -c '<env> <strata> <args>; echo "EXIT:$?"'` in a pseudo-terminal. When strata stops, the shell writes its exit status on the screen, so a test can wait for `EXIT:0`. |
+| `openStrata(cwd, args, env)` | The screen | Starts `sh -c 'printf "\033[20l"; <env> <strata> <args>; echo "EXIT:$?"'` in a pseudo-terminal. When strata stops, the shell writes its exit status on the screen, so a test can wait for `EXIT:0`. [New line mode](#new-line-mode) tells why the command starts with `printf`. |
 
 `runStrata` does not block. The update tests run a fake server in the test process, and that server must
 answer while strata waits for it.
 
-## The TERM setting
+## New line mode
 
-Bubble Tea v1 asks the terminal for its background colour when a program starts. It then waits up to 5
-seconds for an answer. A real terminal answers at once. The emulator in tuistory does not answer.
+The emulator in tuistory starts in new line mode. In that mode, a line feed moves the cursor to the next
+line and also back to column 1. A real terminal starts with the mode off, so a line feed keeps the column.
 
-```mermaid
-sequenceDiagram
-    participant strata as strata with Bubble Tea v1
-    participant term as terminal
-    strata->>term: OSC 11 query: what is your background colour?
-    alt a real terminal
-        term-->>strata: the colour, at once
-    else the emulator in tuistory
-        Note over strata: no answer, so strata waits 5 seconds
-    end
-```
+Bubble Tea v2 draws only the cells that change. It moves the cursor down with a line feed and expects the
+column to stay the same. In new line mode, the text then goes to the wrong column, for example over the
+tree lines of the Stack panel.
 
-termenv, which asks the question for Bubble Tea, does not ask when TERM starts with `screen`, `tmux` or
-`dumb`. tuistory sets its own TERM for the process that it starts, so `openStrata` sets
-`TERM=screen-256color` in the shell command, before the path of strata.
-
-Without the screen TERM, a screen test shows nothing for 5 seconds and then fails with a timeout.
+So `openStrata` writes `\e[20l`, which turns new line mode off, before it starts strata.
 
 ## The update tests
 
@@ -212,9 +200,7 @@ Keep these rules:
 
 ## Watch strata by hand in tmux
 
-The tests do not use tmux. To look at the screen by hand, run strata in a private tmux server. Inside
-tmux, TERM starts with `tmux` or `screen`, so termenv does not ask the background colour question, and
-strata starts at once.
+The tests do not use tmux. To look at the screen by hand, run strata in a private tmux server.
 
 ```sh
 tmux -L strata-check new-session -d -s t -x 160 -y 40 -c /path/to/repo strata

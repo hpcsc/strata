@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/search"
 )

@@ -181,10 +181,11 @@ export async function openStrata(cwd: string, args: string[] = [], env: Record<s
     .join(' ')
   const session = await launchTerminal({
     command: 'sh',
-    // Bubble Tea v1 asks the terminal for its background colour at start and
-    // waits 5 seconds for a reply that this emulator never sends. termenv does
-    // not ask under a screen TERM, and tuistory sets its own TERM for the shell.
-    args: ['-c', `TERM=screen-256color ${assignments} "${getExecutablePath()}" ${args.join(' ')}; echo "EXIT:$?"`],
+    // The emulator starts in new line mode, where a line feed also goes back
+    // to column 1. A real terminal does not, and Bubble Tea v2 moves the
+    // cursor down with a line feed that keeps the column, so \e[20l turns the
+    // mode off before strata starts.
+    args: ['-c', `printf '\\033[20l'; ${assignments} "${getExecutablePath()}" ${args.join(' ')}; echo "EXIT:$?"`],
     cwd,
     cols: 160,
     rows: 40,

@@ -3,7 +3,7 @@ package ui
 import (
 	"context"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/diffview"
 	"github.com/hpcsc/strata/internal/stack"

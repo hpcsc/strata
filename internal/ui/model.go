@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
@@ -100,7 +100,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case treeLoaded:
 		if msg.err != nil {
@@ -166,7 +166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if m.help {
 		m.help = false
@@ -292,7 +292,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.diff.scroll(m.diff.height / 2)
 		case "ctrl+u":
 			m.diff.scroll(-m.diff.height / 2)
-		case " ", "pgdown", "ctrl+f":
+		case "space", "pgdown", "ctrl+f":
 			m.diff.scroll(m.diff.height - 1)
 		case "b", "pgup", "ctrl+b":
 			m.diff.scroll(-(m.diff.height - 1))
@@ -362,7 +362,7 @@ func (m *Model) keepFile() {
 	}
 }
 
-func (m Model) promptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	changed, cancelled := m.prompt.edit(msg)
 	switch {
 	case cancelled:
@@ -601,7 +601,13 @@ func (m *Model) layout() {
 	m.diff.setSize(m.width-m.filesWidth-2, bottom-2, m.split)
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	v := tea.NewView(m.screen())
+	v.AltScreen = true
+	return v
+}
+
+func (m Model) screen() string {
 	if m.width == 0 || m.height == 0 {
 		return ""
 	}

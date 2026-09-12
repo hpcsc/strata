@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/restack"
@@ -113,6 +114,21 @@ func (m memoryViewed) Toggle(f diff.File) error {
 	return nil
 }
 
+// keyPress gives the message for a named key, such as "enter", or for text
+// that the reader types.
+func keyPress(key string) tea.KeyPressMsg {
+	switch key {
+	case "enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "esc":
+		return tea.KeyPressMsg{Code: tea.KeyEscape}
+	}
+	code, _ := utf8.DecodeRuneInString(key)
+	return tea.KeyPressMsg{Code: code, Text: key}
+}
+
 func TestModel(t *testing.T) {
 	file := func(path string) diff.File {
 		return diff.File{Path: path, Status: diff.Modified, OldBlob: "old-" + path, NewBlob: "new-" + path, Insertions: 3, Deletions: 1}
@@ -208,23 +224,14 @@ func TestModel(t *testing.T) {
 	}
 	press := func(m tea.Model, keys ...string) tea.Model {
 		for _, key := range keys {
-			msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
-			switch key {
-			case "enter":
-				msg = tea.KeyMsg{Type: tea.KeyEnter}
-			case "tab":
-				msg = tea.KeyMsg{Type: tea.KeyTab}
-			case "esc":
-				msg = tea.KeyMsg{Type: tea.KeyEsc}
-			}
 			var cmd tea.Cmd
-			m, cmd = m.Update(msg)
+			m, cmd = m.Update(keyPress(key))
 			m = settle(m, cmd)
 		}
 		return m
 	}
 	screen := func(m tea.Model) string {
-		return ansi.Strip(m.View())
+		return ansi.Strip(m.View().Content)
 	}
 
 	t.Run("stack", func(t *testing.T) {
@@ -656,17 +663,9 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "You aborted the sync rebase for the stack of events, and no branch moved.")
 		})
 
-		keyPress := func(m tea.Model, key string) (tea.Model, tea.Cmd) {
-			msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
-			if key == "enter" {
-				msg = tea.KeyMsg{Type: tea.KeyEnter}
-			}
-			return m.Update(msg)
-		}
-
 		t.Run("S does nothing while a plan is on its way", func(t *testing.T) {
-			m, first := keyPress(startWithSync(&memorySync{plan: planned()}), "S")
-			_, second := keyPress(m, "S")
+			m, first := startWithSync(&memorySync{plan: planned()}).Update(keyPress("S"))
+			_, second := m.Update(keyPress("S"))
 
 			require.NotNil(t, first)
 			require.Nil(t, second)
@@ -674,8 +673,8 @@ func TestModel(t *testing.T) {
 
 		t.Run("enter does nothing while a move is on its way", func(t *testing.T) {
 			m := press(startMoving(&memorySync{plan: movable()}, restacked()), "S")
-			m, first := keyPress(m, "enter")
-			_, second := keyPress(m, "enter")
+			m, first := m.Update(keyPress("enter"))
+			_, second := m.Update(keyPress("enter"))
 
 			require.NotNil(t, first)
 			require.Nil(t, second)
@@ -683,8 +682,8 @@ func TestModel(t *testing.T) {
 
 		t.Run("c does nothing while a sync rebase is on its way", func(t *testing.T) {
 			m := press(startWithSync(&memorySync{plan: planned()}), "S")
-			m, first := keyPress(m, "c")
-			_, second := keyPress(m, "c")
+			m, first := m.Update(keyPress("c"))
+			_, second := m.Update(keyPress("c"))
 
 			require.NotNil(t, first)
 			require.Nil(t, second)

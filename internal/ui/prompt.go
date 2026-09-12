@@ -1,7 +1,7 @@
 package ui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // prompt reads a search query on the bottom line of the screen, for the
@@ -18,34 +18,30 @@ func (p *prompt) start(target focus, text string) {
 
 // edit applies a key to the query. It reports whether the text changed, and
 // whether the reader cancelled the search with esc.
-func (p *prompt) edit(msg tea.KeyMsg) (changed, cancelled bool) {
-	switch msg.Type {
-	case tea.KeyEnter:
+func (p *prompt) edit(msg tea.KeyPressMsg) (changed, cancelled bool) {
+	switch msg.String() {
+	case "enter":
 		p.open = false
-	case tea.KeyEsc, tea.KeyCtrlC:
+		return false, false
+	case "esc", "ctrl+c":
 		p.open, p.text = false, ""
 		return true, true
-	case tea.KeyBackspace:
+	case "backspace":
 		if p.text == "" {
 			return false, false
 		}
 		runes := []rune(p.text)
 		p.text = string(runes[:len(runes)-1])
 		return true, false
-	case tea.KeyCtrlU:
+	case "ctrl+u":
 		p.text = ""
 		return true, false
-	case tea.KeySpace:
-		p.text += " "
-		return true, false
-	case tea.KeyRunes:
-		if msg.Alt {
-			return false, false
-		}
-		p.text += string(msg.Runes)
-		return true, false
 	}
-	return false, false
+	if msg.Text == "" || msg.Mod.Contains(tea.ModAlt) || msg.Mod.Contains(tea.ModCtrl) {
+		return false, false
+	}
+	p.text += msg.Text
+	return true, false
 }
 
 func (p prompt) view(result string) string {
