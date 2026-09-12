@@ -123,6 +123,30 @@ describe('strata sync', () => {
     expect(repo.git('status', '--porcelain')).toBe('')
     expect(repo.git('show', 'HEAD:README.md')).toBe('# shop\n\nOpen all day\n')
   })
+
+  it('with --keep-merged keeps a branch that the trunk merged', async () => {
+    const repo = ordersRepo()
+    repo.squashMergeOnOrigin('billing')
+    const billingBefore = repo.git('for-each-ref', '--format=%(objectname)', 'refs/heads/billing')
+
+    const result = await runStrata(repo.dir, ['sync', '--keep-merged'])
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toMatch(/├─ billing\s+merged: strata keeps it/)
+    expect(repo.git('for-each-ref', '--format=%(objectname)', 'refs/heads/billing')).toBe(billingBefore)
+  })
+
+  it('with --remote exits 1 before it fetches, because it moves only local branches', async () => {
+    const repo = ordersRepo()
+    const trunkBefore = repo.git('rev-parse', 'origin/main')
+    repo.commitOnOrigin('README.md', '# shop\n\nOpen all day\n', 'Open all day')
+
+    const result = await runStrata(repo.dir, ['--remote', 'sync'])
+
+    expect(result.status).toBe(1)
+    expect(result.stderr.trim()).toBe('strata: sync moves local branches, so it does not work with --remote')
+    expect(repo.git('rev-parse', 'origin/main')).toBe(trunkBefore)
+  })
 })
 
 describe('strata sync --resolve', () => {
@@ -151,6 +175,18 @@ describe('strata sync --resolve', () => {
     expect(list.stdout).not.toContain('behind parent')
     expect(repo.git('show', 'orders-events:orders/events.go')).toContain('OrderShipped')
     expect(repo.git('status', '--porcelain')).toBe('')
+  })
+
+  it('does not go with --dry-run, and starts no sync rebase', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
+    const worktreesBefore = repo.git('worktree', 'list', '--porcelain')
+
+    const result = await runStrata(repo.dir, ['sync', '--dry-run', '--resolve', 'orders-events'])
+
+    expect(result.status).toBe(1)
+    expect(result.stderr.trim()).toBe('strata: --dry-run and --resolve do not go together: --resolve starts a rebase')
+    expect(repo.git('worktree', 'list', '--porcelain')).toBe(worktreesBefore)
   })
 })
 
@@ -207,5 +243,23 @@ describe('strata sync --dry-run', () => {
     expect(lines[2]).toMatch(/^└─ orders-events\s+stays: conflict in orders\/events.go$/)
     expect(lines[3]).toMatch(/^ {3}└─ orders-handler\s+stays: orders-events cannot move$/)
     expect(lines[4]).toMatch(/^ {6}└─ orders-api\s+stays: orders-events cannot move$/)
+  })
+
+  it('after git rebase --continue in a sync rebase, says that strata sync moves that stack first, and moves nothing', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
+    const started = await runStrata(repo.dir, ['sync', '--resolve', 'orders-events'])
+    const worktree = started.stdout.match(/stopped at the conflict, in (.+)\.\n/)?.[1]
+    expect(worktree).toBeDefined()
+    const sync = repo.worktree(worktree as string)
+    sync.write('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n\ntype OrderPlaced struct{}\n')
+    sync.git('add', 'orders/events.go')
+    sync.git('-c', 'core.editor=true', 'rebase', '--continue')
+    const headsBefore = repo.git('for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/')
+
+    const result = await runStrata(repo.dir, ['sync', '--dry-run'])
+
+    expect(result.stdout).toContain('The sync rebase for the stack of orders-events is done, and strata sync moves that stack first.')
+    expect(repo.git('for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/')).toBe(headsBefore)
   })
 })

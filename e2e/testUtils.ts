@@ -95,11 +95,23 @@ export class Repo {
   }
 
   commitOnOrigin(path: string, content: string, message: string): void {
-    const dir = join(scratchDir(), 'teammate')
-    git(dirname(dir), 'clone', '-q', this.origin, dir)
-    const teammate = new Repo(dir, this.origin)
+    const teammate = this.teammate()
     teammate.commit(path, content, message)
     teammate.git('push', '-q', 'origin', 'main')
+  }
+
+  squashMergeOnOrigin(branch: string): void {
+    const teammate = this.teammate()
+    teammate.git('fetch', '-q', this.dir, branch)
+    teammate.git('merge', '-q', '--squash', 'FETCH_HEAD')
+    teammate.git('commit', '-q', '-m', `Merge ${branch}`)
+    teammate.git('push', '-q', 'origin', 'main')
+  }
+
+  private teammate(): Repo {
+    const dir = join(scratchDir(), 'teammate')
+    git(dirname(dir), 'clone', '-q', this.origin, dir)
+    return new Repo(dir, this.origin)
   }
 }
 
