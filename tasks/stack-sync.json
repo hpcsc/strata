@@ -162,7 +162,7 @@
     },
     {
       "n": 7,
-      "done": false,
+      "done": true,
       "title": "Sign the moved commits with a sync rebase",
       "language": "Go",
       "testable": true,

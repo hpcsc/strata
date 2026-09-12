@@ -205,20 +205,178 @@ func TestMover(t *testing.T) {
 			require.Equal(t, eventsBefore, commit(t, repo, "events"))
 		})
 
-		t.Run("moves no branch when commit.gpgsign is true", func(t *testing.T) {
+	})
+
+	t.Run("signed commits", func(t *testing.T) {
+		signed := func(t *testing.T, repo *gittest.Repo, from, to string) []string {
+			t.Helper()
+			var subjects []string
+			for _, c := range strings.Fields(repo.Git("rev-list", "--reverse", from+".."+to)) {
+				raw := repo.Git("cat-file", "commit", c)
+				require.Contains(t, raw, "\ngpgsig ", "commit %s has no signature", c)
+				subjects = append(subjects, strings.TrimSpace(repo.Git("log", "-1", "--format=%s", c)))
+			}
+			return subjects
+		}
+		tree := func(t *testing.T, repo *gittest.Repo, rev string) string {
+			t.Helper()
+			return commit(t, repo, rev+"^{tree}")
+		}
+
+		t.Run("signs each commit that a branch gets, with the tree and the message of the plan", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Commit("placed.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, []string{"Name the events", "Add Placed"}, signed(t, repo, "origin/main", "events"))
+			require.Equal(t, tree(t, repo, p.Outcomes["events"].NewTip), tree(t, repo, "events"))
+		})
+
+		t.Run("a tree of branches moves in one sync rebase, and a child behind its parent moves onto the new tip of the parent", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("events")
+			repo.SwitchNew("other")
+			repo.Commit("other.go", "package orders\n", "Add the other")
+			repo.Switch("events")
+			repo.Commit("events.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.Equal(t, []string{"Add the handler"}, signed(t, repo, "events", "handler"))
+			require.Equal(t, []string{"Add the other"}, signed(t, repo, "events", "other"))
+			require.Equal(t, commit(t, repo, "events"), commit(t, repo, "handler^"))
+			require.Equal(t, commit(t, repo, "events"), commit(t, repo, "other^"))
+			require.Equal(t, []string{"Name the events", "Add Placed"}, signed(t, repo, "origin/main", "events"))
+		})
+
+		t.Run("the children of a merged branch move onto the new trunk with only their own commits", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
+			repo.SquashMergeOnOrigin("events")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.Equal(t, []string{"Add the handler"}, signed(t, repo, "origin/main", "handler"))
+		})
+
+		t.Run("a commit whose change the new trunk has stays as an empty commit", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Commit("placed.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			repo.Switch("main")
+			repo.CommitOnOrigin("events.go", "package orders\n", "Pick the events file into main")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.Equal(t, []string{"Name the events", "Add Placed"}, signed(t, repo, "origin/main", "events"))
+			require.Empty(t, repo.Git("diff", "events~2", "events~1"))
+		})
+
+		t.Run("moves a branch that a worktree has checked out to its signed tip", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.Equal(t, []string{"Name the events"}, signed(t, repo, "origin/main", "HEAD"))
+			require.Empty(t, repo.Git("status", "--porcelain"))
+		})
+
+		t.Run("moves a branch whose name holds characters that a shell reads", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("fix(ui);x")
+			repo.Commit("ui.go", "package ui\n", "Fix the UI")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, []string{"Fix the UI"}, signed(t, repo, "origin/main", "fix(ui);x"))
+		})
+
+		t.Run("leaves no sync worktree and no ref in refs/strata/sync/", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
 			repo.Commit("events.go", "package orders\n", "Name the events")
 			repo.Switch("main")
 			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
-			repo.Git("config", "commit.gpgsign", "true")
-			eventsBefore := commit(t, repo, "events")
+			repo.SignWithFakeGPG()
+			worktreesBefore := repo.Git("worktree", "list", "--porcelain")
 			p := plan(t, repo)
 
-			_, err := restack.NewMover(git.New(repo.Dir)).Move(context.Background(), p)
+			move(t, repo, p)
 
-			require.ErrorContains(t, err, "commit.gpgsign")
-			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			require.Equal(t, worktreesBefore, repo.Git("worktree", "list", "--porcelain"))
+			require.Empty(t, repo.Git("for-each-ref", "refs/strata/"))
+		})
+
+		t.Run("a sync worktree that an earlier sync left behind does not stop the sync", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			repo.Git("worktree", "add", "-q", "--detach", filepath.Join(repo.Dir, ".git", "strata", "sync", "worktree"), "main")
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, []string{"Name the events"}, signed(t, repo, "origin/main", "events"))
+		})
+
+		t.Run("hooks of the repository do not run in the sync worktree", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			hooks, marker := t.TempDir(), filepath.Join(t.TempDir(), "hook-ran")
+			require.NoError(t, os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755))
+			repo.Git("config", "core.hooksPath", hooks)
+			_, err := git.New(repo.Dir).Run(context.Background(), "worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "probe"), "main")
+			require.NoError(t, err)
+			require.FileExists(t, marker, "the hook does not run for a checkout of the user")
+			require.NoError(t, os.Remove(marker))
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.NoFileExists(t, marker)
 		})
 	})
 

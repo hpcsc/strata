@@ -2,7 +2,6 @@ package restack
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -29,22 +28,35 @@ type Stay struct {
 }
 
 func (m *Mover) Move(ctx context.Context, plan Plan) (Result, error) {
+	var moving [][]string
+	for _, names := range stacksOf(plan.Tree) {
+		if plan.stackMoves(names) {
+			moving = append(moving, names)
+		}
+	}
 	signs, err := m.signs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	if signs {
-		return Result{}, errors.New("strata sync cannot sign commits yet, and commit.gpgsign is true")
+	if signs && len(moving) > 0 {
+		// git replay cannot sign commits, so a sync that signs makes them again with git rebase
+		rebase, err := newSyncRebase(ctx, m.git)
+		if err != nil {
+			return Result{}, err
+		}
+		newTips, err := rebase.commits(ctx, plan, moving)
+		if err != nil {
+			return Result{}, err
+		}
+		plan = plan.withNewTips(newTips)
 	}
+
 	check, err := newWorktreeCheck(ctx, m.git)
 	if err != nil {
 		return Result{}, err
 	}
 	var result Result
-	for _, names := range stacksOf(plan.Tree) {
-		if !plan.stackMoves(names) {
-			continue
-		}
+	for _, names := range moving {
 		reason, err := m.moveStack(ctx, plan, names, check)
 		if err != nil {
 			return result, err
@@ -55,7 +67,7 @@ func (m *Mover) Move(ctx context.Context, plan Plan) (Result, error) {
 			result.Moved++
 		}
 	}
-	return result, nil
+	return result, forgetMovedTips(ctx, m.git)
 }
 
 func (m *Mover) signs(ctx context.Context) (bool, error) {
@@ -112,7 +124,7 @@ func (m *Mover) moveInWorktree(ctx context.Context, b stack.Branch, newTip strin
 	if resetErr == nil {
 		return "", nil
 	}
-	ref := "refs/strata/sync/" + b.Name
+	ref := newTipRefs + b.Name
 	if _, err := m.git.Run(ctx, "update-ref", ref, newTip); err != nil {
 		return "", err
 	}

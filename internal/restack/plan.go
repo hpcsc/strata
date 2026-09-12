@@ -103,6 +103,18 @@ func (p Plan) KeepMerged() Plan {
 	return p
 }
 
+func (p Plan) withNewTips(newTips map[string]string) Plan {
+	outcomes := make(map[string]Outcome, len(p.Outcomes))
+	for name, o := range p.Outcomes {
+		if tip, ok := newTips[name]; ok && o.Kind == Moves {
+			o.NewTip = tip
+		}
+		outcomes[name] = o
+	}
+	p.Outcomes = outcomes
+	return p
+}
+
 func (p Plan) StacksWithConflict() int {
 	n := 0
 	for _, names := range stacksOf(p.Tree) {

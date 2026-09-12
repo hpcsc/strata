@@ -506,22 +506,22 @@ The move of Task 5 and Task 6 then uses the tips in `refs/strata/sync/`. After t
 sync worktree and the refs.
 
 **Acceptance Criteria:**
-- [ ] A test sets `commit.gpgsign=true` and a fake `gpg.program` that writes `[GNUPG:] SIG_CREATED` and a
+- [x] A test sets `commit.gpgsign=true` and a fake `gpg.program` that writes `[GNUPG:] SIG_CREATED` and a
   fake signature. Each commit that `strata sync` puts on a moved branch then has a signature, and the tree
   and the message that the replay of the plan gave.
-- [ ] The sync rebase moves no branch. The branches move only in the move step, with the checks and the
+- [x] The sync rebase moves no branch. The branches move only in the move step, with the checks and the
   transaction of Task 5 and Task 6.
-- [ ] A child that was behind its parent moves onto the new tip of its parent.
-- [ ] The children of a merged branch move onto the new trunk with only their own commits.
-- [ ] A tree of branches (two children of one parent) moves in one sync rebase.
-- [ ] A commit whose change the new trunk already has stays as an empty commit, as the replay keeps it.
-- [ ] Hooks of the repository, for example a `post-checkout` hook, do not run in the sync worktree.
-- [ ] After `strata sync`, `git worktree list` shows no sync worktree, and `refs/strata/sync/` holds no ref,
+- [x] A child that was behind its parent moves onto the new tip of its parent.
+- [x] The children of a merged branch move onto the new trunk with only their own commits.
+- [x] A tree of branches (two children of one parent) moves in one sync rebase.
+- [x] A commit whose change the new trunk already has stays as an empty commit, as the replay keeps it.
+- [x] Hooks of the repository, for example a `post-checkout` hook, do not run in the sync worktree.
+- [x] After `strata sync`, `git worktree list` shows no sync worktree, and `refs/strata/sync/` holds no ref,
   except the ref that Task 6 keeps for a branch whose `reset --keep` failed.
-- [ ] A sync worktree that a stopped sync left behind does not stop the next `strata sync`.
-- [ ] When `commit.gpgsign` is false or not set, `strata sync` keeps the replay's commits and adds no
+- [x] A sync worktree that a stopped sync left behind does not stop the next `strata sync`.
+- [x] When `commit.gpgsign` is false or not set, `strata sync` keeps the replay's commits and adds no
   worktree.
-- [ ] When `commit.gpgsign` is true, `strata sync` moves the stacks. The refusal that Task 5 added is gone.
+- [x] When `commit.gpgsign` is true, `strata sync` moves the stacks. The refusal that Task 5 added is gone.
 
 **Affected Files/Modules:**
 - `internal/restack/`: the path for `commit.gpgsign`, the todo list, the sync worktree, and the read and

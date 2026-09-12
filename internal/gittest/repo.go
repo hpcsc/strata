@@ -77,6 +77,18 @@ func (r *Repo) Write(path, content string) {
 	require.NoError(r.t, os.WriteFile(full, []byte(content), 0o644))
 }
 
+func (r *Repo) SignWithFakeGPG() {
+	r.t.Helper()
+	program := filepath.Join(r.t.TempDir(), "fake-gpg")
+	script := "#!/bin/sh\ncat >/dev/null\n" +
+		"printf '\\n[GNUPG:] SIG_CREATED D 1 8 00 0 FAKE\\n' >&2\n" +
+		"printf -- '-----BEGIN PGP SIGNATURE-----\\nfake\\n-----END PGP SIGNATURE-----\\n'\n"
+	require.NoError(r.t, os.WriteFile(program, []byte(script), 0o755))
+	r.Git("config", "commit.gpgsign", "true")
+	r.Git("config", "gpg.format", "openpgp")
+	r.Git("config", "gpg.program", program)
+}
+
 func (r *Repo) Read(path string) string {
 	r.t.Helper()
 	data, err := os.ReadFile(filepath.Join(r.Dir, path))
