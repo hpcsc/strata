@@ -19,8 +19,8 @@ describe('the strata screen', () => {
     await strata.press('enter')
     await strata.press('j')
 
-    const screen = await strata.waitForText('orders/handler_test.go · 2/2')
-    expect(screen).toContain('func TestHandler')
+    const screen = await strata.waitForText('func TestHandler')
+    expect(screen).toContain('orders/handler_test.go · 2/2')
   })
 
   it('] keeps the same file selected on the next branch', async () => {
@@ -54,6 +54,7 @@ describe('the strata screen', () => {
     const strata = await openStrata(ordersRepo().dir)
     await strata.waitForText('Branch · orders-handler')
     await strata.press('enter')
+    await strata.waitForText('handler_test.go')
 
     await strata.press('o')
 
@@ -95,6 +96,7 @@ describe('the strata screen', () => {
     const first = await openStrata(repo.dir)
     await first.waitForText('Branch · orders-handler')
     await first.press('enter')
+    await first.waitForText('handler_test.go')
 
     await first.press('v')
     await first.press('v')
@@ -104,7 +106,7 @@ describe('the strata screen', () => {
     await first.waitForText('EXIT:0')
 
     const second = await openStrata(repo.dir)
-    const screen = await second.waitForText('Branch · orders-handler')
+    const screen = await second.waitForText('orders/')
     expect(screen).toContain('✓ 2/2 viewed')
   })
 })
