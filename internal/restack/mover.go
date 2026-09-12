@@ -16,17 +16,6 @@ func NewMover(git runner) *Mover {
 	return &Mover{git: git}
 }
 
-type Result struct {
-	Moved int
-	// Stayed holds only the stacks that the plan moved.
-	Stayed []Stay
-}
-
-type Stay struct {
-	Stack  string
-	Reason string
-}
-
 func (m *Mover) Move(ctx context.Context, plan Plan) (Result, error) {
 	rebase, err := newSyncRebase(ctx, m.git)
 	if err != nil {
@@ -155,4 +144,15 @@ func (m *Mover) moveInWorktree(ctx context.Context, b stack.Branch, newTip strin
 	}
 	return fmt.Sprintf("%s did not move in %s (%v). To finish the move, run: git -C %s reset --keep %s",
 		b.Name, b.Worktree, resetErr, b.Worktree, ref), nil
+}
+
+type Result struct {
+	Moved int
+	// Stayed holds only the stacks that the plan moved.
+	Stayed []Stay
+}
+
+type Stay struct {
+	Stack  string
+	Reason string
 }
