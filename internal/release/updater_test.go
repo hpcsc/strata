@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/hpcsc/strata/internal/release"
@@ -50,7 +51,9 @@ func (f fakeGitHub) serve(t *testing.T) *httptest.Server {
 			http.Error(w, "assets need Accept: application/octet-stream", http.StatusBadRequest)
 			return
 		}
-		_, _ = w.Write(f.assets[r.PathValue("name")])
+		data := f.assets[r.PathValue("name")]
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		_, _ = w.Write(data)
 	})
 	server = httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -150,7 +153,7 @@ func TestUpdater(t *testing.T) {
 			check, err := updater.Check(ctx)
 			require.NoError(t, err)
 
-			require.NoError(t, updater.Install(ctx, check.Latest))
+			require.NoError(t, updater.Install(ctx, check.Latest, nil))
 
 			installed, err := os.ReadFile(path)
 			require.NoError(t, err)
@@ -158,6 +161,24 @@ func TestUpdater(t *testing.T) {
 			info, err := os.Stat(path)
 			require.NoError(t, err)
 			require.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+		})
+
+		t.Run("reports the bytes of the archive as they arrive, up to the size of the archive", func(t *testing.T) {
+			archive := archiveHolding(t, "darwin arm64 binary")
+			client := releaseWith(t, "v0.2.0", map[string][]byte{"strata-darwin-arm64.tar.gz": archive})
+			updater := release.NewUpdater(client, "v0.1.0", "darwin-arm64", installedBinary(t))
+			check, err := updater.Check(ctx)
+			require.NoError(t, err)
+			var reported [][2]int64
+
+			err = updater.Install(ctx, check.Latest, func(done, total int64) {
+				reported = append(reported, [2]int64{done, total})
+			})
+
+			require.NoError(t, err)
+			require.NotEmpty(t, reported)
+			size := int64(len(archive))
+			require.Equal(t, [2]int64{size, size}, reported[len(reported)-1])
 		})
 
 		t.Run("leaves the executable alone when the download does not match its checksum", func(t *testing.T) {
@@ -172,7 +193,7 @@ func TestUpdater(t *testing.T) {
 			check, err := updater.Check(ctx)
 			require.NoError(t, err)
 
-			err = updater.Install(ctx, check.Latest)
+			err = updater.Install(ctx, check.Latest, nil)
 
 			require.ErrorContains(t, err, "does not match its checksum")
 			installed, readErr := os.ReadFile(path)
@@ -187,7 +208,7 @@ func TestUpdater(t *testing.T) {
 			check, err := updater.Check(ctx)
 			require.NoError(t, err)
 
-			err = updater.Install(ctx, check.Latest)
+			err = updater.Install(ctx, check.Latest, nil)
 
 			require.ErrorContains(t, err, "darwin-arm64")
 		})

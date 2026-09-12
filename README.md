@@ -70,7 +70,8 @@ strata update --check      # only tell you when a newer release exists
 ```
 
 `strata update` downloads the archive for your platform from the latest GitHub release, checks it against
-the `checksums.txt` of that release, and then replaces the strata binary. A build from a commit, for example
+the `checksums.txt` of that release, and then replaces the strata binary. It names each step on stderr, and
+in a terminal it shows how much of the download has arrived. A build from a commit, for example
 from `task install`, is not a release, so `strata update` does not replace it unless you add `--force`.
 `GITHUB_TOKEN` or `GH_TOKEN` gives access to a private repository.
 

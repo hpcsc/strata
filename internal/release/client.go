@@ -45,7 +45,7 @@ func NewClient(httpClient *http.Client, api, repo, token string) *Client {
 }
 
 func (c *Client) Latest(ctx context.Context) (Release, error) {
-	body, err := c.get(ctx, c.api+"/repos/"+c.repo+"/releases/latest", "application/vnd.github+json")
+	body, err := c.get(ctx, c.api+"/repos/"+c.repo+"/releases/latest", "application/vnd.github+json", nil)
 	if err != nil {
 		return Release{}, err
 	}
@@ -57,12 +57,14 @@ func (c *Client) Latest(ctx context.Context) (Release, error) {
 }
 
 // Download fetches an asset through its API URL, which works for a private
-// repository when the client has a token.
-func (c *Client) Download(ctx context.Context, a Asset) ([]byte, error) {
-	return c.get(ctx, a.URL, "application/octet-stream")
+// repository when the client has a token. A progress that is not nil gets the
+// bytes that have arrived, and the size, which is -1 when the server does not
+// send it.
+func (c *Client) Download(ctx context.Context, a Asset, progress func(done, total int64)) ([]byte, error) {
+	return c.get(ctx, a.URL, "application/octet-stream", progress)
 }
 
-func (c *Client) get(ctx context.Context, url, accept string) ([]byte, error) {
+func (c *Client) get(ctx context.Context, url, accept string, progress func(done, total int64)) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -83,5 +85,25 @@ func (c *Client) get(ctx context.Context, url, accept string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxDownload))
+	body := io.LimitReader(resp.Body, maxDownload)
+	if progress != nil {
+		body = &counter{r: body, total: resp.ContentLength, progress: progress}
+	}
+	return io.ReadAll(body)
+}
+
+type counter struct {
+	r        io.Reader
+	done     int64
+	total    int64
+	progress func(done, total int64)
+}
+
+func (c *counter) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 {
+		c.done += int64(n)
+		c.progress(c.done, c.total)
+	}
+	return n, err
 }

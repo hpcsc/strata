@@ -25,7 +25,7 @@ const (
 
 type releases interface {
 	Latest(ctx context.Context) (Release, error)
-	Download(ctx context.Context, a Asset) ([]byte, error)
+	Download(ctx context.Context, a Asset, progress func(done, total int64)) ([]byte, error)
 }
 
 type Check struct {
@@ -57,7 +57,10 @@ func (u *Updater) Check(ctx context.Context) (Check, error) {
 	return Check{Current: u.current, Latest: latest, Newer: newer}, nil
 }
 
-func (u *Updater) Install(ctx context.Context, r Release) error {
+// Install gives progress the bytes of the archive as they arrive, and the size
+// of the archive, which is -1 when the server does not send it. progress can be
+// nil.
+func (u *Updater) Install(ctx context.Context, r Release, progress func(done, total int64)) error {
 	archiveName := binaryName + "-" + u.platform + ".tar.gz"
 	archiveAsset, ok := r.Asset(archiveName)
 	if !ok {
@@ -67,11 +70,11 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 	if !ok {
 		return fmt.Errorf("release %s has no %s to check the download against", r.Tag, checksumsName)
 	}
-	archive, err := u.releases.Download(ctx, archiveAsset)
+	archive, err := u.releases.Download(ctx, archiveAsset, progress)
 	if err != nil {
 		return err
 	}
-	checksums, err := u.releases.Download(ctx, checksumsAsset)
+	checksums, err := u.releases.Download(ctx, checksumsAsset, nil)
 	if err != nil {
 		return err
 	}

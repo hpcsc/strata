@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
+	"github.com/hpcsc/strata/internal/progress"
 	"github.com/hpcsc/strata/internal/release"
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
@@ -23,6 +24,7 @@ import (
 	"github.com/hpcsc/strata/internal/ui"
 	"github.com/hpcsc/strata/internal/version"
 	"github.com/hpcsc/strata/internal/viewed"
+	"github.com/mattn/go-isatty"
 	"github.com/urfave/cli/v3"
 )
 
@@ -157,7 +159,10 @@ func update(ctx context.Context, cmd *cli.Command) error {
 		api = "https://api.github.com"
 	}
 	client := release.NewClient(&http.Client{Timeout: 2 * time.Minute}, api, releaseRepository, token)
-	updater := release.NewUpdater(client, version.Current(), runtime.GOOS+"-"+runtime.GOARCH, executable)
+	platform := runtime.GOOS + "-" + runtime.GOARCH
+	updater := release.NewUpdater(client, version.Current(), platform, executable)
+	status := cmd.Root().ErrWriter
+	fmt.Fprintf(status, "Finding the latest release of %s…\n", releaseRepository)
 	check, err := updater.Check(ctx)
 	if errors.Is(err, release.ErrNoRelease) {
 		return fmt.Errorf("found no release of %s: it has none yet, or it is private and GITHUB_TOKEN is not set", releaseRepository)
@@ -179,11 +184,19 @@ func update(ctx context.Context, cmd *cli.Command) error {
 		_, err = fmt.Fprintf(out, "strata %s is available. This is %s. Run strata update to install it.\n", check.Latest.Tag, check.Current)
 		return err
 	}
-	if err := updater.Install(ctx, check.Latest); err != nil {
+	download := progress.Start(status, isTerminal(status), fmt.Sprintf("Downloading strata %s for %s", check.Latest.Tag, platform))
+	err = updater.Install(ctx, check.Latest, download.Bytes)
+	download.End()
+	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "Updated strata from %s to %s at %s.\n", check.Current, check.Latest.Tag, executable)
 	return err
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && isatty.IsTerminal(f.Fd())
 }
 
 func syncStacks(ctx context.Context, cmd *cli.Command) error {

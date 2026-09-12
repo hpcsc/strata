@@ -76,6 +76,18 @@ describe('strata update', () => {
     expect(replaced.stdout).toContain('the new strata')
   })
 
+  it('names each step on stderr while it updates, so that it does not look stuck', async () => {
+    const api = await fakeRelease('v9.0.0', '#!/bin/sh\necho "the new strata"\n')
+    const copy = join(scratchDir(), 'strata')
+    copyFileSync(getExecutablePath(), copy)
+    chmodSync(copy, 0o755)
+
+    const update = await runStrata(scratchDir(), ['update'], againstApi(api), copy)
+
+    expect(update.status).toBe(0)
+    expect(update.stderr).toBe(`Finding the latest release of hpcsc/strata…\nDownloading strata v9.0.0 for ${platform()}…\n`)
+  })
+
   it('says so when the binary is the latest release', async () => {
     const api = await fakeRelease(buildTag(), '#!/bin/sh\necho "never installed"\n')
 
