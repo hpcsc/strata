@@ -69,10 +69,11 @@ func newCommand(syncErr error) *cli.Command {
 			},
 			{
 				Name:  "update",
-				Usage: "replace strata with the latest release when that release is newer",
+				Usage: "replace strata with the latest release, or with the latest prerelease",
 				Flags: []cli.Flag{
-					&cli.BoolFlag{Name: "check", Usage: "only report whether a newer release exists"},
-					&cli.BoolFlag{Name: "force", Usage: "replace a build that is not a release, such as one built from a commit"},
+					&cli.BoolFlag{Name: "prerelease", Usage: "install the latest prerelease, a build of main, in place of the latest release"},
+					&cli.BoolFlag{Name: "check", Usage: "only report whether this build is the latest"},
+					&cli.BoolFlag{Name: "force", Usage: "replace a build from a commit, which is not a release or a prerelease"},
 				},
 				Action: update,
 			},
@@ -161,11 +162,15 @@ func update(ctx context.Context, cmd *cli.Command) error {
 	client := release.NewClient(&http.Client{Timeout: 2 * time.Minute}, api, releaseRepository, token)
 	platform := runtime.GOOS + "-" + runtime.GOARCH
 	updater := release.NewUpdater(client, version.Current(), platform, executable)
+	channel, command := release.Releases, "strata update"
+	if cmd.Bool("prerelease") {
+		channel, command = release.Prereleases, "strata update --prerelease"
+	}
 	status := cmd.Root().ErrWriter
-	fmt.Fprintf(status, "Finding the latest release of %s…\n", releaseRepository)
-	check, err := updater.Check(ctx)
+	fmt.Fprintf(status, "Finding the latest %s of %s…\n", channel, releaseRepository)
+	check, err := updater.Check(ctx, channel)
 	if errors.Is(err, release.ErrNoRelease) {
-		return fmt.Errorf("found no release of %s: it has none yet, or it is private and GITHUB_TOKEN is not set", releaseRepository)
+		return fmt.Errorf("found no %s of %s: it has none yet, or it is private and GITHUB_TOKEN is not set", channel, releaseRepository)
 	}
 	if err != nil {
 		return err
@@ -173,15 +178,15 @@ func update(ctx context.Context, cmd *cli.Command) error {
 
 	out := cmd.Root().Writer
 	switch {
-	case !version.IsRelease(check.Current) && !cmd.Bool("force"):
-		_, err = fmt.Fprintf(out, "strata %s is not a release build. The latest release is %s.\n"+
-			"Run strata update --force to replace this build with it.\n", check.Current, check.Latest.Tag)
+	case !version.IsTagged(check.Current) && !cmd.Bool("force"):
+		_, err = fmt.Fprintf(out, "strata %s is a build from a commit. The latest %s is %s.\n"+
+			"Run %s --force to replace this build with it.\n", check.Current, channel, check.Latest.Tag, command)
 		return err
-	case version.IsRelease(check.Current) && !check.Newer:
-		_, err = fmt.Fprintf(out, "strata %s is the latest release.\n", check.Current)
+	case check.UpToDate:
+		_, err = fmt.Fprintf(out, "strata %s is the latest %s.\n", check.Current, channel)
 		return err
 	case cmd.Bool("check"):
-		_, err = fmt.Fprintf(out, "strata %s is available. This is %s. Run strata update to install it.\n", check.Latest.Tag, check.Current)
+		_, err = fmt.Fprintf(out, "strata %s is available. This is %s. Run %s to install it.\n", check.Latest.Tag, check.Current, command)
 		return err
 	}
 	download := progress.Start(status, isTerminal(status), fmt.Sprintf("Downloading strata %s for %s", check.Latest.Tag, platform))

@@ -14,8 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/mod/semver"
 )
 
 const (
@@ -25,14 +23,23 @@ const (
 
 type releases interface {
 	Latest(ctx context.Context) (Release, error)
+	LatestPrerelease(ctx context.Context) (Release, error)
 	Download(ctx context.Context, a Asset, progress func(done, total int64)) ([]byte, error)
 }
 
+// Channel names the releases that an update takes. An update installs the
+// latest of its channel, also when that is older than the current build.
+type Channel string
+
+const (
+	Releases    Channel = "release"
+	Prereleases Channel = "prerelease"
+)
+
 type Check struct {
-	Current string
-	Latest  Release
-	// Newer is true only when Current is a release and Latest is newer.
-	Newer bool
+	Current  string
+	Latest   Release
+	UpToDate bool
 }
 
 type Updater struct {
@@ -48,13 +55,16 @@ func NewUpdater(releases releases, current, platform, executable string) *Update
 	return &Updater{releases: releases, current: current, platform: platform, executable: executable}
 }
 
-func (u *Updater) Check(ctx context.Context) (Check, error) {
-	latest, err := u.releases.Latest(ctx)
+func (u *Updater) Check(ctx context.Context, channel Channel) (Check, error) {
+	latest := u.releases.Latest
+	if channel == Prereleases {
+		latest = u.releases.LatestPrerelease
+	}
+	r, err := latest(ctx)
 	if err != nil {
 		return Check{}, err
 	}
-	newer := semver.IsValid(u.current) && semver.IsValid(latest.Tag) && semver.Compare(latest.Tag, u.current) > 0
-	return Check{Current: u.current, Latest: latest, Newer: newer}, nil
+	return Check{Current: u.current, Latest: r, UpToDate: r.Tag == u.current}, nil
 }
 
 // Install gives progress the bytes of the archive as they arrive, and the size

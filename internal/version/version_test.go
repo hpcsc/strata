@@ -42,15 +42,16 @@ func TestFromBuild(t *testing.T) {
 	})
 }
 
-func TestIsRelease(t *testing.T) {
-	t.Run("a tag is a release", func(t *testing.T) {
-		require.True(t, version.IsRelease("v1.2.3"))
-		require.True(t, version.IsRelease("v1.2.3-rc.1"))
+func TestIsTagged(t *testing.T) {
+	t.Run("a release, a hand-made prerelease and a prerelease from main are tagged", func(t *testing.T) {
+		require.True(t, version.IsTagged("v1.2.3"))
+		require.True(t, version.IsTagged("v1.2.3-rc.1"))
+		require.True(t, version.IsTagged("v1.2.4-42.g4829f92"))
 	})
 
-	t.Run("a commit sha or a pseudo-version is not a release", func(t *testing.T) {
-		require.False(t, version.IsRelease("8755588"))
-		require.False(t, version.IsRelease("8755588-dirty"))
-		require.False(t, version.IsRelease("v0.0.0-20260911114137-875558850016"))
+	t.Run("a commit sha or a pseudo-version is not tagged", func(t *testing.T) {
+		require.False(t, version.IsTagged("8755588"))
+		require.False(t, version.IsTagged("8755588-dirty"))
+		require.False(t, version.IsTagged("v0.0.0-20260911114137-875558850016"))
 	})
 }

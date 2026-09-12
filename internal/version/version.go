@@ -27,7 +27,7 @@ func FromBuild(tag string, info *debug.BuildInfo) string {
 	if info == nil {
 		return Unknown
 	}
-	if IsRelease(info.Main.Version) {
+	if IsTagged(info.Main.Version) {
 		return info.Main.Version
 	}
 	revision, modified := "", false
@@ -49,6 +49,6 @@ func FromBuild(tag string, info *debug.BuildInfo) string {
 	return short
 }
 
-func IsRelease(v string) bool {
+func IsTagged(v string) bool {
 	return tagVersion.MatchString(v) && !pseudoVersion.MatchString(v)
 }

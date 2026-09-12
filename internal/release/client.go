@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 var ErrNoRelease = errors.New("the repository has no release yet")
@@ -20,8 +21,11 @@ type Asset struct {
 }
 
 type Release struct {
-	Tag    string  `json:"tag_name"`
-	Assets []Asset `json:"assets"`
+	Tag         string    `json:"tag_name"`
+	Assets      []Asset   `json:"assets"`
+	Prerelease  bool      `json:"prerelease"`
+	Draft       bool      `json:"draft"`
+	PublishedAt time.Time `json:"published_at"`
 }
 
 func (r Release) Asset(name string) (Asset, bool) {
@@ -54,6 +58,29 @@ func (c *Client) Latest(ctx context.Context) (Release, error) {
 		return Release{}, fmt.Errorf("read the latest release of %s: %w", c.repo, err)
 	}
 	return r, nil
+}
+
+// LatestPrerelease gives the prerelease that the repository published last.
+// The latest release endpoint skips prereleases, so it reads the list.
+func (c *Client) LatestPrerelease(ctx context.Context) (Release, error) {
+	body, err := c.get(ctx, c.api+"/repos/"+c.repo+"/releases?per_page=100", "application/vnd.github+json", nil)
+	if err != nil {
+		return Release{}, err
+	}
+	var all []Release
+	if err := json.Unmarshal(body, &all); err != nil {
+		return Release{}, fmt.Errorf("read the releases of %s: %w", c.repo, err)
+	}
+	var latest Release
+	for _, r := range all {
+		if r.Prerelease && !r.Draft && r.PublishedAt.After(latest.PublishedAt) {
+			latest = r
+		}
+	}
+	if latest.Tag == "" {
+		return Release{}, ErrNoRelease
+	}
+	return latest, nil
 }
 
 // Download fetches an asset through its API URL, which works for a private

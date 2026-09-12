@@ -17,43 +17,66 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/hpcsc/strata/internal/release"
 	"github.com/stretchr/testify/require"
 )
 
+type fakeRelease struct {
+	tag        string
+	prerelease bool
+	draft      bool
+	published  time.Time
+	assets     map[string][]byte
+}
+
+// fakeGitHub serves its releases in the order of the slice.
 type fakeGitHub struct {
-	tag    string
-	assets map[string][]byte
-	// noRelease makes the latest-release endpoint answer 404.
-	noRelease bool
+	releases []fakeRelease
 }
 
 func (f fakeGitHub) serve(t *testing.T) *httptest.Server {
 	t.Helper()
 	var server *httptest.Server
+	describe := func(rel fakeRelease) map[string]any {
+		var assets []map[string]string
+		for name := range rel.assets {
+			assets = append(assets, map[string]string{"name": name, "url": server.URL + "/assets/" + rel.tag + "/" + name})
+		}
+		return map[string]any{"tag_name": rel.tag, "prerelease": rel.prerelease, "draft": rel.draft, "published_at": rel.published, "assets": assets}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/hpcsc/strata/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		if f.noRelease {
-			http.NotFound(w, r)
-			return
+		for _, rel := range f.releases {
+			if !rel.prerelease && !rel.draft {
+				require.NoError(t, json.NewEncoder(w).Encode(describe(rel)))
+				return
+			}
 		}
-		body := map[string]any{"tag_name": f.tag}
-		var assets []map[string]string
-		for name := range f.assets {
-			assets = append(assets, map[string]string{"name": name, "url": server.URL + "/assets/" + name})
-		}
-		body["assets"] = assets
-		require.NoError(t, json.NewEncoder(w).Encode(body))
+		http.NotFound(w, r)
 	})
-	mux.HandleFunc("/assets/{name}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/hpcsc/strata/releases", func(w http.ResponseWriter, r *http.Request) {
+		all := []map[string]any{}
+		for _, rel := range f.releases {
+			all = append(all, describe(rel))
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(all))
+	})
+	mux.HandleFunc("/assets/{tag}/{name}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Accept") != "application/octet-stream" {
 			http.Error(w, "assets need Accept: application/octet-stream", http.StatusBadRequest)
 			return
 		}
-		data := f.assets[r.PathValue("name")]
-		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-		_, _ = w.Write(data)
+		for _, rel := range f.releases {
+			if rel.tag == r.PathValue("tag") {
+				data := rel.assets[r.PathValue("name")]
+				w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+				_, _ = w.Write(data)
+				return
+			}
+		}
+		http.NotFound(w, r)
 	})
 	server = httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -92,8 +115,16 @@ func TestUpdater(t *testing.T) {
 		for name, data := range archives {
 			assets[name] = data
 		}
-		server := fakeGitHub{tag: tag, assets: assets}.serve(t)
+		server := fakeGitHub{releases: []fakeRelease{{tag: tag, assets: assets}}}.serve(t)
 		return release.NewClient(server.Client(), server.URL, "hpcsc/strata", "")
+	}
+	clientFor := func(t *testing.T, releases ...fakeRelease) *release.Client {
+		t.Helper()
+		server := fakeGitHub{releases: releases}.serve(t)
+		return release.NewClient(server.Client(), server.URL, "hpcsc/strata", "")
+	}
+	day := func(n int) time.Time {
+		return time.Date(2026, 9, n, 12, 0, 0, 0, time.UTC)
 	}
 	installedBinary := func(t *testing.T) string {
 		t.Helper()
@@ -103,40 +134,78 @@ func TestUpdater(t *testing.T) {
 	}
 
 	t.Run("check", func(t *testing.T) {
-		t.Run("a newer release is newer than the current release", func(t *testing.T) {
-			client := releaseWith(t, "v0.2.0", nil)
+		t.Run("the release channel takes the latest release, not a newer prerelease", func(t *testing.T) {
+			client := clientFor(t,
+				fakeRelease{tag: "v0.2.1-3.gccccccc", prerelease: true, published: day(3)},
+				fakeRelease{tag: "v0.2.0", published: day(2)},
+			)
 
-			check, err := release.NewUpdater(client, "v0.1.0", "darwin-arm64", "").Check(ctx)
+			check, err := release.NewUpdater(client, "v0.1.0", "darwin-arm64", "").Check(ctx, release.Releases)
 
 			require.NoError(t, err)
-			require.True(t, check.Newer)
 			require.Equal(t, "v0.2.0", check.Latest.Tag)
+			require.False(t, check.UpToDate)
 		})
 
-		t.Run("the current release is not newer than itself", func(t *testing.T) {
-			client := releaseWith(t, "v0.2.0", nil)
+		t.Run("the prerelease channel takes the prerelease that was published last", func(t *testing.T) {
+			client := clientFor(t,
+				fakeRelease{tag: "v0.2.0", published: day(4)},
+				fakeRelease{tag: "v0.2.1-2.gbbbbbbb", prerelease: true, published: day(2)},
+				fakeRelease{tag: "v0.2.1-3.gccccccc", prerelease: true, published: day(3)},
+			)
 
-			check, err := release.NewUpdater(client, "v0.2.0", "darwin-arm64", "").Check(ctx)
+			check, err := release.NewUpdater(client, "v0.2.0", "darwin-arm64", "").Check(ctx, release.Prereleases)
 
 			require.NoError(t, err)
-			require.False(t, check.Newer)
+			require.Equal(t, "v0.2.1-3.gccccccc", check.Latest.Tag)
 		})
 
-		t.Run("a build from a commit is never older than a release", func(t *testing.T) {
-			client := releaseWith(t, "v0.2.0", nil)
+		t.Run("the prerelease channel skips a draft", func(t *testing.T) {
+			client := clientFor(t,
+				fakeRelease{tag: "v0.2.1-4.gddddddd", prerelease: true, draft: true, published: day(4)},
+				fakeRelease{tag: "v0.2.1-3.gccccccc", prerelease: true, published: day(3)},
+			)
 
-			check, err := release.NewUpdater(client, "8755588-dirty", "darwin-arm64", "").Check(ctx)
+			check, err := release.NewUpdater(client, "v0.2.0", "darwin-arm64", "").Check(ctx, release.Prereleases)
 
 			require.NoError(t, err)
-			require.False(t, check.Newer)
+			require.Equal(t, "v0.2.1-3.gccccccc", check.Latest.Tag)
+		})
+
+		t.Run("the latest build of a channel is up to date", func(t *testing.T) {
+			client := clientFor(t, fakeRelease{tag: "v0.2.0", published: day(2)})
+
+			check, err := release.NewUpdater(client, "v0.2.0", "darwin-arm64", "").Check(ctx, release.Releases)
+
+			require.NoError(t, err)
+			require.True(t, check.UpToDate)
+		})
+
+		t.Run("a prerelease build is not up to date on the release channel, so an update goes back to the latest release", func(t *testing.T) {
+			client := clientFor(t,
+				fakeRelease{tag: "v0.2.1-3.gccccccc", prerelease: true, published: day(3)},
+				fakeRelease{tag: "v0.2.0", published: day(2)},
+			)
+
+			check, err := release.NewUpdater(client, "v0.2.1-3.gccccccc", "darwin-arm64", "").Check(ctx, release.Releases)
+
+			require.NoError(t, err)
 			require.Equal(t, "v0.2.0", check.Latest.Tag)
+			require.False(t, check.UpToDate)
 		})
 
 		t.Run("a repository with no release says so", func(t *testing.T) {
-			server := fakeGitHub{noRelease: true}.serve(t)
-			client := release.NewClient(server.Client(), server.URL, "hpcsc/strata", "")
+			client := clientFor(t)
 
-			_, err := release.NewUpdater(client, "v0.1.0", "darwin-arm64", "").Check(ctx)
+			_, err := release.NewUpdater(client, "v0.1.0", "darwin-arm64", "").Check(ctx, release.Releases)
+
+			require.ErrorIs(t, err, release.ErrNoRelease)
+		})
+
+		t.Run("a repository with only releases has no prerelease", func(t *testing.T) {
+			client := clientFor(t, fakeRelease{tag: "v0.2.0", published: day(2)})
+
+			_, err := release.NewUpdater(client, "v0.2.0", "darwin-arm64", "").Check(ctx, release.Prereleases)
 
 			require.ErrorIs(t, err, release.ErrNoRelease)
 		})
@@ -150,7 +219,7 @@ func TestUpdater(t *testing.T) {
 			})
 			path := installedBinary(t)
 			updater := release.NewUpdater(client, "v0.1.0", "darwin-arm64", path)
-			check, err := updater.Check(ctx)
+			check, err := updater.Check(ctx, release.Releases)
 			require.NoError(t, err)
 
 			require.NoError(t, updater.Install(ctx, check.Latest, nil))
@@ -167,7 +236,7 @@ func TestUpdater(t *testing.T) {
 			archive := archiveHolding(t, "darwin arm64 binary")
 			client := releaseWith(t, "v0.2.0", map[string][]byte{"strata-darwin-arm64.tar.gz": archive})
 			updater := release.NewUpdater(client, "v0.1.0", "darwin-arm64", installedBinary(t))
-			check, err := updater.Check(ctx)
+			check, err := updater.Check(ctx, release.Releases)
 			require.NoError(t, err)
 			var reported [][2]int64
 
@@ -187,10 +256,10 @@ func TestUpdater(t *testing.T) {
 				"strata-darwin-arm64.tar.gz": archive,
 				"checksums.txt":              checksumsFor(map[string][]byte{"strata-darwin-arm64.tar.gz": []byte("something else")}),
 			}
-			server := fakeGitHub{tag: "v0.2.0", assets: assets}.serve(t)
+			server := fakeGitHub{releases: []fakeRelease{{tag: "v0.2.0", assets: assets}}}.serve(t)
 			path := installedBinary(t)
 			updater := release.NewUpdater(release.NewClient(server.Client(), server.URL, "hpcsc/strata", ""), "v0.1.0", "darwin-arm64", path)
-			check, err := updater.Check(ctx)
+			check, err := updater.Check(ctx, release.Releases)
 			require.NoError(t, err)
 
 			err = updater.Install(ctx, check.Latest, nil)
@@ -205,7 +274,7 @@ func TestUpdater(t *testing.T) {
 			client := releaseWith(t, "v0.2.0", map[string][]byte{"strata-linux-amd64.tar.gz": archiveHolding(t, "linux amd64 binary")})
 			path := installedBinary(t)
 			updater := release.NewUpdater(client, "v0.1.0", "darwin-arm64", path)
-			check, err := updater.Check(ctx)
+			check, err := updater.Check(ctx, release.Releases)
 			require.NoError(t, err)
 
 			err = updater.Install(ctx, check.Latest, nil)
