@@ -127,12 +127,14 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	if cmd.Bool("remote") && syncErr == nil {
 		syncErr = restack.ErrRemote
 	}
+	mover := restack.NewMover(repo)
+	sync := restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), mover, restack.NewResolver(repo, mover), syncErr)
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,
 		Diffs:       diff.NewLoader(repo),
 		Highlighter: syntax.NewHighlighter(cmd.String("theme")),
 		Viewed:      marks,
-		Sync:        restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), restack.NewMover(repo), syncErr),
+		Sync:        sync,
 	})
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	return err

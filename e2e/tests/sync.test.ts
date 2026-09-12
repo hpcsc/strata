@@ -83,6 +83,31 @@ describe('strata sync on git older than 2.44', () => {
   })
 })
 
+describe('the c key', () => {
+  it('opens a shell in the sync worktree, and enter then moves the resolved stack', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
+    const strata = await openStrata(repo.dir, [], { SHELL: '/bin/sh' })
+    await strata.waitForText('S sync')
+    await strata.type('S')
+    await strata.waitForText('c resolve the conflict')
+
+    await strata.press('c')
+    await strata.waitForText('strata: resolve the conflict of the stack of orders-events')
+    await strata.type("printf 'package orders\\n\\ntype OrderShipped struct{}\\n\\ntype OrderPlaced struct{}\\n' > orders/events.go")
+    await strata.press('enter')
+    await strata.type('git add orders/events.go && git -c core.editor=true rebase --continue && exit')
+    await strata.press('enter')
+    await strata.waitForText('enter move the resolved stack')
+    await strata.press('enter')
+
+    const screen = await strata.waitForText('Moved 1 stack.')
+    expect(screen).not.toContain('behind parent')
+    expect(repo.git('show', 'orders-events:orders/events.go')).toContain('OrderShipped')
+    expect(repo.git('status', '--porcelain')).toBe('')
+  })
+})
+
 describe('strata sync', () => {
   it('moves each stack onto the new trunk, with the checked-out branch and its files', async () => {
     const repo = ordersRepo()

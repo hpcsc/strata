@@ -68,22 +68,38 @@ type memorySync struct {
 	planErr     error
 	result      restack.Result
 	moveErr     error
-	moved       *[]restack.Plan
+	moved       []restack.Plan
+	pending     restack.Pending
+	resolved    []string
+	finished    int
 }
 
-func (m memorySync) Available() error {
+func (m *memorySync) Available() error {
 	return m.unavailable
 }
 
-func (m memorySync) Plan(context.Context) (restack.Plan, error) {
+func (m *memorySync) Pending(context.Context) (restack.Pending, error) {
+	return m.pending, nil
+}
+
+func (m *memorySync) Plan(context.Context) (restack.Plan, error) {
 	return m.plan, m.planErr
 }
 
-func (m memorySync) Move(_ context.Context, p restack.Plan) (restack.Result, error) {
-	if m.moved != nil {
-		*m.moved = append(*m.moved, p)
-	}
+func (m *memorySync) Move(_ context.Context, p restack.Plan) (restack.Result, error) {
+	m.moved = append(m.moved, p)
 	return m.result, m.moveErr
+}
+
+func (m *memorySync) Resolve(_ context.Context, _ restack.Plan, branch string) (restack.Pending, error) {
+	m.resolved = append(m.resolved, branch)
+	return restack.Pending{State: restack.RebaseWaits, Stack: branch, Worktree: "/work/sync"}, nil
+}
+
+func (m *memorySync) Finish(context.Context) (restack.Result, error) {
+	m.finished++
+	m.pending = restack.Pending{}
+	return m.result, nil
 }
 
 type memoryViewed map[string]bool
@@ -437,14 +453,14 @@ func TestModel(t *testing.T) {
 		}
 
 		t.Run("the footer and the keys screen show S when the sync can run", func(t *testing.T) {
-			m := startWithSync(memorySync{plan: planned()})
+			m := startWithSync(&memorySync{plan: planned()})
 
 			require.Contains(t, screen(m), "S sync")
 			require.Contains(t, screen(press(m, "?")), "fetch the trunk and show the plan of a sync")
 		})
 
 		t.Run("S shows the plan in the Stack panel with an outcome for each branch", func(t *testing.T) {
-			view := screen(press(startWithSync(memorySync{plan: planned()}), "S"))
+			view := screen(press(startWithSync(&memorySync{plan: planned()}), "S"))
 
 			require.Contains(t, view, "Stack · sync plan")
 			require.Contains(t, view, "origin/main  3 new commits")
@@ -455,7 +471,10 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("esc closes the plan, and the Stack panel shows the tree as it was before", func(t *testing.T) {
-			view := screen(press(startWithSync(memorySync{plan: planned()}), "S", "esc"))
+			p := planned()
+			p.Tree.Branches[1].Behind = 0
+
+			view := screen(press(startWithSync(&memorySync{plan: p}), "S", "esc"))
 
 			require.NotContains(t, view, "sync plan")
 			require.NotContains(t, view, "moves onto")
@@ -463,7 +482,7 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("when the sync cannot run, the footer and the keys screen hide S, and S shows why", func(t *testing.T) {
-			m := startWithSync(memorySync{unavailable: errors.New("sync needs git 2.44 or later, and this is git 2.43.0")})
+			m := startWithSync(&memorySync{unavailable: errors.New("sync needs git 2.44 or later, and this is git 2.43.0")})
 
 			require.NotContains(t, screen(m), "S sync")
 			require.NotContains(t, screen(press(m, "?")), "show the plan of a sync")
@@ -471,7 +490,7 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("a plan that fails shows its error in the status line", func(t *testing.T) {
-			view := screen(press(startWithSync(memorySync{planErr: errors.New("git fetch --prune origin: could not read Username")}), "S"))
+			view := screen(press(startWithSync(&memorySync{planErr: errors.New("git fetch --prune origin: could not read Username")}), "S"))
 
 			require.Contains(t, view, "could not read Username")
 			require.NotContains(t, view, "sync plan")
@@ -489,7 +508,7 @@ func TestModel(t *testing.T) {
 			p.Outcomes["handler"] = restack.Outcome{Kind: restack.Moves, NewParent: "events"}
 			return p
 		}
-		startMoving := func(sync memorySync, afterMove stack.Tree) tea.Model {
+		startMoving := func(sync *memorySync, afterMove stack.Tree) tea.Model {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{
 				Tree:        memoryTree{tree: afterMove},
@@ -509,47 +528,44 @@ func TestModel(t *testing.T) {
 		}
 
 		t.Run("while the plan shows, the footer tells how many stacks enter moves", func(t *testing.T) {
-			view := screen(press(startMoving(memorySync{plan: movable()}, restacked()), "S"))
+			view := screen(press(startMoving(&memorySync{plan: movable()}, restacked()), "S"))
 
 			require.Contains(t, view, "enter move 1 stack")
 		})
 
 		t.Run("enter moves the stacks of the plan, reads the branches again, and closes the plan", func(t *testing.T) {
-			var moved []restack.Plan
-			sync := memorySync{plan: movable(), result: restack.Result{Moved: 1}, moved: &moved}
+			sync := &memorySync{plan: movable(), result: restack.Result{Moved: 1}}
 
 			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
 
-			require.Equal(t, []restack.Plan{movable()}, moved)
+			require.Equal(t, []restack.Plan{movable()}, sync.moved)
 			require.NotContains(t, view, "sync plan")
 			require.NotContains(t, view, "behind parent")
 			require.Contains(t, view, "Moved 1 stack.")
 		})
 
 		t.Run("enter in a plan with no stack to move moves nothing", func(t *testing.T) {
-			var moved []restack.Plan
 			p := planned()
 			p.Outcomes["events"] = restack.Outcome{Kind: restack.Moves, NewParent: "origin/main", Blocker: "handler"}
-			sync := memorySync{plan: p, moved: &moved}
+			sync := &memorySync{plan: p}
 
 			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
 
-			require.Empty(t, moved)
+			require.Empty(t, sync.moved)
 			require.Contains(t, view, "the plan moves no stack")
 		})
 
 		t.Run("when the plan is closed, enter goes to the files as before", func(t *testing.T) {
-			var moved []restack.Plan
-			sync := memorySync{plan: movable(), moved: &moved}
+			sync := &memorySync{plan: movable()}
 
 			view := screen(press(startMoving(sync, restacked()), "S", "esc", "enter"))
 
-			require.Empty(t, moved)
+			require.Empty(t, sync.moved)
 			require.Contains(t, view, "o fold")
 		})
 
 		t.Run("a move that fails shows its error in the status line", func(t *testing.T) {
-			sync := memorySync{plan: movable(), moveErr: errors.New("make the commits of the sync: gpg failed to sign the data")}
+			sync := &memorySync{plan: movable(), moveErr: errors.New("make the commits of the sync: gpg failed to sign the data")}
 
 			view := screen(press(startMoving(sync, restacked()), "S", "enter"))
 
@@ -557,7 +573,7 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("a stack that stays at the move shows why, with the command that finishes the move", func(t *testing.T) {
-			sync := memorySync{plan: movable(), result: restack.Result{Stayed: []restack.Stay{{
+			sync := &memorySync{plan: movable(), result: restack.Result{Stayed: []restack.Stay{{
 				Stack:  "events",
 				Reason: "handler did not move in /work/handler. To finish the move, run: git -C /work/handler reset --keep refs/strata/sync/handler",
 			}}}}
@@ -568,10 +584,110 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("the keys screen lists enter and esc for the plan", func(t *testing.T) {
-			view := screen(press(startMoving(memorySync{plan: movable()}, restacked()), "?"))
+			view := screen(press(startMoving(&memorySync{plan: movable()}, restacked()), "?"))
 
 			require.Contains(t, view, "move the stacks that the plan moves")
 			require.Contains(t, view, "close the plan")
+			require.Contains(t, view, "resolve the conflict of the stack in a shell")
+		})
+
+		t.Run("while the plan shows, the footer shows c on a branch of a stack with a conflict, and not on other branches", func(t *testing.T) {
+			m := press(startWithSync(&memorySync{plan: planned()}), "S")
+
+			require.Contains(t, screen(m), "c resolve the conflict")
+			require.NotContains(t, screen(press(m, "j", "j")), "c resolve the conflict")
+		})
+
+		t.Run("c starts the sync rebase for the stack of the selected branch", func(t *testing.T) {
+			sync := &memorySync{plan: planned()}
+
+			press(startWithSync(sync), "S", "j", "c")
+
+			require.Equal(t, []string{"handler"}, sync.resolved)
+		})
+
+		t.Run("c on a stack with no conflict does nothing", func(t *testing.T) {
+			sync := &memorySync{plan: planned()}
+
+			press(startWithSync(sync), "S", "j", "j", "c")
+
+			require.Empty(t, sync.resolved)
+		})
+
+		t.Run("S while a sync rebase waits says how to finish it", func(t *testing.T) {
+			waits := restack.Pending{State: restack.RebaseWaits, Stack: "events", Worktree: "/work/sync"}
+
+			view := screen(press(startWithSync(&memorySync{plan: planned(), pending: waits}), "S"))
+
+			require.Contains(t, view, "git rebase --continue")
+			require.NotContains(t, view, "sync plan")
+		})
+
+		t.Run("S with a done sync rebase shows the plan of the resolved stack, and enter moves it", func(t *testing.T) {
+			tree, _ := stackOf()
+			resolved := restack.Plan{Tree: stack.Tree{Trunk: tree.Trunk, Branches: tree.Branches[:2]}, Outcomes: map[string]restack.Outcome{
+				"events":  {Kind: restack.Moves, NewParent: "origin/main", NewTip: "e2"},
+				"handler": {Kind: restack.Moves, NewParent: "events", NewTip: "h2"},
+			}}
+			sync := &memorySync{
+				plan:    planned(),
+				pending: restack.Pending{State: restack.RebaseDone, Stack: "events", Plan: resolved},
+				result:  restack.Result{Moved: 1},
+			}
+
+			m := press(startWithSync(sync), "S")
+
+			require.Regexp(t, `└─ events\s+moves onto origin/main`, screen(m))
+			require.NotContains(t, screen(m), "billing")
+			require.Contains(t, screen(m), "enter move the resolved stack")
+			view := screen(press(m, "enter"))
+			require.Equal(t, 1, sync.finished)
+			require.Empty(t, sync.moved)
+			require.Contains(t, view, "Moved 1 stack.")
+		})
+
+		t.Run("S after an aborted sync rebase removes what it left, and plans as usual", func(t *testing.T) {
+			sync := &memorySync{plan: planned(), pending: restack.Pending{State: restack.RebaseStopped, Stack: "events"}}
+
+			view := screen(press(startWithSync(sync), "S"))
+
+			require.Equal(t, 1, sync.finished)
+			require.Contains(t, view, "sync plan")
+			require.Contains(t, view, "The sync rebase for the stack of events stopped, and no branch moved.")
+		})
+
+		keyPress := func(m tea.Model, key string) (tea.Model, tea.Cmd) {
+			msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+			if key == "enter" {
+				msg = tea.KeyMsg{Type: tea.KeyEnter}
+			}
+			return m.Update(msg)
+		}
+
+		t.Run("S does nothing while a plan is on its way", func(t *testing.T) {
+			m, first := keyPress(startWithSync(&memorySync{plan: planned()}), "S")
+			_, second := keyPress(m, "S")
+
+			require.NotNil(t, first)
+			require.Nil(t, second)
+		})
+
+		t.Run("enter does nothing while a move is on its way", func(t *testing.T) {
+			m := press(startMoving(&memorySync{plan: movable()}, restacked()), "S")
+			m, first := keyPress(m, "enter")
+			_, second := keyPress(m, "enter")
+
+			require.NotNil(t, first)
+			require.Nil(t, second)
+		})
+
+		t.Run("c does nothing while a sync rebase is on its way", func(t *testing.T) {
+			m := press(startWithSync(&memorySync{plan: planned()}), "S")
+			m, first := keyPress(m, "c")
+			_, second := keyPress(m, "c")
+
+			require.NotNil(t, first)
+			require.Nil(t, second)
 		})
 	})
 

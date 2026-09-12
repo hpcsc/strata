@@ -116,6 +116,15 @@ func (p Plan) withNewTips(newTips map[string]string) Plan {
 	return p
 }
 
+func (p Plan) StackHasConflict(branch string) bool {
+	for _, name := range stackOf(p, branch) {
+		if p.Outcomes[name].Kind == Conflict {
+			return true
+		}
+	}
+	return false
+}
+
 func (p Plan) StacksWithConflict() int {
 	n := 0
 	for _, names := range stacksOf(p.Tree) {

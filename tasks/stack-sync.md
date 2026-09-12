@@ -742,19 +742,19 @@ strata reads the state again:
 `S` handles the same three states.
 
 **Acceptance Criteria:**
-- [ ] While the plan shows, the footer shows `c resolve the conflict` when the selected branch is in a
+- [x] While the plan shows, the footer shows `c resolve the conflict` when the selected branch is in a
   stack with a conflict. On other branches, it does not.
-- [ ] `c` starts the sync rebase for the stack of the selected branch, and opens `$SHELL` in the sync
+- [x] `c` starts the sync rebase for the stack of the selected branch, and opens `$SHELL` in the sync
   worktree. The strata screen comes back when the shell exits.
-- [ ] When the shell exits with the rebase done, the Stack panel shows the plan for that stack, and `enter`
+- [x] When the shell exits with the rebase done, the Stack panel shows the plan for that stack, and `enter`
   moves it.
-- [ ] When the shell exits with the rebase still waiting, the status line tells you to finish the rebase in
+- [x] When the shell exits with the rebase still waiting, the status line tells you to finish the rebase in
   the sync worktree. `S` does the same while the rebase waits.
-- [ ] When the shell exits after `git rebase --abort`, strata removes the record, the refs and the sync
+- [x] When the shell exits after `git rebase --abort`, strata removes the record, the refs and the sync
   worktree, and no branch moved. `S` does the same.
-- [ ] `S` with a done rebase shows the plan for the resolved stack.
-- [ ] The keys screen lists `c`.
-- [ ] e2e: with `SHELL` set to `sh` through `openStrata`, the test does these steps:
+- [x] `S` with a done rebase shows the plan for the resolved stack.
+- [x] The keys screen lists `c`.
+- [x] e2e: with `SHELL` set to `sh` through `openStrata`, the test does these steps:
   1. Press `S`.
   2. Select the branch with the conflict and press `c`.
   3. Resolve the conflict in the shell, run `git rebase --continue`, and exit the shell.

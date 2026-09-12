@@ -31,8 +31,11 @@ type ViewedMarks interface {
 
 type Syncer interface {
 	Available() error
+	Pending(ctx context.Context) (restack.Pending, error)
 	Plan(ctx context.Context) (restack.Plan, error)
 	Move(ctx context.Context, plan restack.Plan) (restack.Result, error)
+	Resolve(ctx context.Context, plan restack.Plan, branch string) (restack.Pending, error)
+	Finish(ctx context.Context) (restack.Result, error)
 }
 
 type Sources struct {

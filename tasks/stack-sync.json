@@ -268,7 +268,7 @@
     },
     {
       "n": 11,
-      "done": false,
+      "done": true,
       "title": "Resolve a conflict from the terminal UI with `c`",
       "language": "Go",
       "testable": true,

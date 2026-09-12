@@ -25,9 +25,11 @@ type Pending struct {
 	State    State
 	Stack    string
 	Worktree string
+	// Plan holds the resolved stack when State is RebaseDone.
+	Plan Plan
 }
 
-func (p Pending) waitsError() error {
+func (p Pending) WaitsError() error {
 	return fmt.Errorf("the sync rebase for the stack of %s waits in %s: finish it there with git rebase --continue, or stop it with git rebase --abort",
 		p.Stack, p.Worktree)
 }
@@ -52,7 +54,7 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 	}
 	switch pending.State {
 	case RebaseWaits:
-		return Pending{}, pending.waitsError()
+		return Pending{}, pending.WaitsError()
 	case RebaseDone:
 		return Pending{}, fmt.Errorf("the sync rebase for the stack of %s is done: run strata sync to move the stack", pending.Stack)
 	case RebaseStopped:
@@ -107,7 +109,7 @@ func (r *Resolver) Finish(ctx context.Context) (Result, error) {
 	case NoRebase:
 		return Result{}, nil
 	case RebaseWaits:
-		return Result{}, pending.waitsError()
+		return Result{}, pending.WaitsError()
 	case RebaseStopped:
 		return Result{}, r.forgetStopped(ctx, rebase, record)
 	}
@@ -137,12 +139,13 @@ func (r *Resolver) pending(ctx context.Context, rebase *syncRebase) (Pending, Pl
 	if err != nil {
 		return Pending{}, Plan{}, err
 	}
-	pending.State = RebaseDone
 	for name, o := range record.Outcomes {
 		if o.Kind == Moves && newTips[name] == "" {
 			pending.State = RebaseStopped
+			return pending, record, nil
 		}
 	}
+	pending.State, pending.Plan = RebaseDone, record.withNewTips(newTips)
 	return pending, record, nil
 }
 
@@ -193,7 +196,7 @@ func planToResolve(plan Plan, names []string) (Plan, error) {
 		return Plan{}, fmt.Errorf("the stack of %s has no conflict", names[0])
 	}
 	tree := stack.Tree{Trunk: plan.Tree.Trunk, Current: plan.Tree.Current, Branches: branches}
-	return Plan{Tree: tree, TrunkTip: plan.TrunkTip, Outcomes: outcomes}, nil
+	return Plan{Tree: tree, NewCommits: plan.NewCommits, TrunkTip: plan.TrunkTip, Outcomes: outcomes}, nil
 }
 
 func writeRecord(path string, plan Plan) error {
