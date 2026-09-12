@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/gittest"
@@ -377,6 +378,39 @@ func TestMover(t *testing.T) {
 
 				require.ErrorContains(t, err, "another strata runs a sync rebase")
 				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			})
+
+			t.Run("an interrupt ends the sync rebase, and leaves no sync worktree and no ref", func(t *testing.T) {
+				repo := gittest.New(t)
+				repo.SwitchNew("events")
+				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.Switch("main")
+				repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+				repo.SignWithFakeGPG()
+				signing := filepath.Join(t.TempDir(), "signing")
+				slowGPG := filepath.Join(t.TempDir(), "slow-gpg")
+				require.NoError(t, os.WriteFile(slowGPG, []byte("#!/bin/sh\ntouch "+signing+"\nsleep 10\n"), 0o755))
+				repo.Git("config", "gpg.program", slowGPG)
+				eventsBefore := commit(t, repo, "events")
+				worktreesBefore := repo.Git("worktree", "list", "--porcelain")
+				p := plan(t, repo)
+				ctx, interrupt := context.WithCancel(context.Background())
+				t.Cleanup(interrupt)
+				go func() {
+					for ctx.Err() == nil {
+						if _, err := os.Stat(signing); err == nil {
+							interrupt()
+						}
+						time.Sleep(10 * time.Millisecond)
+					}
+				}()
+
+				_, err := restack.NewMover(git.New(repo.Dir)).Move(ctx, p)
+
+				require.Error(t, err)
+				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+				require.Equal(t, worktreesBefore, repo.Git("worktree", "list", "--porcelain"))
+				require.Empty(t, repo.Git("for-each-ref", "refs/strata/"))
 			})
 
 			t.Run("moves nothing while a sync rebase waits, and keeps that rebase", func(t *testing.T) {

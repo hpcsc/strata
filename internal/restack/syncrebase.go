@@ -59,13 +59,15 @@ func (s *syncRebase) commits(ctx context.Context, plan Plan, stacks [][]string) 
 		return nil, err
 	}
 	defer unlock()
+	// An interrupt cancels ctx, and the rebase that it stops must still end here.
+	cleanupCtx := context.WithoutCancel(ctx)
 	moving, stopped, err := s.start(ctx, plan, stacks)
-	defer s.removeWorktree(ctx)
+	defer s.removeWorktree(cleanupCtx)
 	if err != nil {
 		if stopped {
-			_, _ = s.git.Run(ctx, "-C", s.worktree(), "rebase", "--abort")
+			_, _ = s.git.Run(cleanupCtx, "-C", s.worktree(), "rebase", "--abort")
 		}
-		_ = s.deleteNewTips(ctx, moving)
+		_ = s.deleteNewTips(cleanupCtx, moving)
 		return nil, err
 	}
 	newTips, err = s.newTips(ctx)

@@ -220,7 +220,7 @@ worktree that the sync changes, so you can decide.
 `git replay` does not sign commits. When `commit.gpgsign` is true, strata makes the commits to keep again
 with a sync rebase, which signs each commit with your settings. The sync rebase runs in the sync worktree,
 with the hooks of the repository off, and moves no branch. strata then moves the branches to the signed
-commits, as in step 7.
+commits, as in step 7. When you press Ctrl+C during the sync rebase, strata ends it, and no branch moves.
 
 ## Git version
 

@@ -83,7 +83,7 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 		return Pending{}, err
 	}
 	if _, stopped, err := rebase.start(ctx, resolve, [][]string{names}); err != nil && !stopped {
-		_ = r.removeAborted(ctx, rebase, resolve)
+		_ = r.removeAborted(context.WithoutCancel(ctx), rebase, resolve)
 		return Pending{}, err
 	}
 	pending, _, err = r.pending(ctx, rebase)
