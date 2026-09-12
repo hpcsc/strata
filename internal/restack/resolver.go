@@ -18,7 +18,7 @@ const (
 	NoRebase State = iota
 	RebaseWaits
 	RebaseDone
-	RebaseStopped
+	RebaseAborted
 )
 
 type Pending struct {
@@ -30,7 +30,7 @@ type Pending struct {
 }
 
 func (p Pending) WaitsError() error {
-	return fmt.Errorf("the sync rebase for the stack of %s waits in %s: finish it there with git rebase --continue, or stop it with git rebase --abort",
+	return fmt.Errorf("the sync rebase for the stack of %s waits in %s: finish it there with git rebase --continue, or end it with git rebase --abort",
 		p.Stack, p.Worktree)
 }
 
@@ -57,8 +57,8 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 		return Pending{}, pending.WaitsError()
 	case RebaseDone:
 		return Pending{}, fmt.Errorf("the sync rebase for the stack of %s is done: run strata sync to move the stack", pending.Stack)
-	case RebaseStopped:
-		if err := r.forgetStopped(ctx, rebase, record); err != nil {
+	case RebaseAborted:
+		if err := r.forgetAborted(ctx, rebase, record); err != nil {
 			return Pending{}, err
 		}
 	}
@@ -78,7 +78,7 @@ func (r *Resolver) Start(ctx context.Context, plan Plan, branch string) (Pending
 		return Pending{}, err
 	}
 	if _, stopped, err := rebase.start(ctx, resolve, [][]string{names}); err != nil && !stopped {
-		_ = r.forgetStopped(ctx, rebase, resolve)
+		_ = r.forgetAborted(ctx, rebase, resolve)
 		return Pending{}, err
 	}
 	pending, _, err = r.pending(ctx, rebase)
@@ -95,7 +95,7 @@ func (r *Resolver) Pending(ctx context.Context) (Pending, error) {
 }
 
 // Finish moves the stack of a sync rebase that is done, or removes what a
-// sync rebase that stopped left behind.
+// sync rebase that you aborted left behind.
 func (r *Resolver) Finish(ctx context.Context) (Result, error) {
 	rebase, err := newSyncRebase(ctx, r.git)
 	if err != nil {
@@ -110,8 +110,8 @@ func (r *Resolver) Finish(ctx context.Context) (Result, error) {
 		return Result{}, nil
 	case RebaseWaits:
 		return Result{}, pending.WaitsError()
-	case RebaseStopped:
-		return Result{}, r.forgetStopped(ctx, rebase, record)
+	case RebaseAborted:
+		return Result{}, r.forgetAborted(ctx, rebase, record)
 	}
 	newTips, err := rebase.newTips(ctx)
 	if err != nil {
@@ -141,7 +141,7 @@ func (r *Resolver) pending(ctx context.Context, rebase *syncRebase) (Pending, Pl
 	}
 	for name, o := range record.Outcomes {
 		if o.Kind == Moves && newTips[name] == "" {
-			pending.State = RebaseStopped
+			pending.State = RebaseAborted
 			return pending, record, nil
 		}
 	}
@@ -149,7 +149,7 @@ func (r *Resolver) pending(ctx context.Context, rebase *syncRebase) (Pending, Pl
 	return pending, record, nil
 }
 
-func (r *Resolver) forgetStopped(ctx context.Context, rebase *syncRebase, record Plan) error {
+func (r *Resolver) forgetAborted(ctx context.Context, rebase *syncRebase, record Plan) error {
 	rebase.removeWorktree(ctx)
 	var names []string
 	for _, b := range record.Tree.Branches {
@@ -182,7 +182,7 @@ func planToResolve(plan Plan, names []string) (Plan, error) {
 		case o.Kind == Conflict:
 			conflict = true
 			o.Kind = Moves
-		case o.Kind.keepsStack():
+		case o.Kind.blocksStack():
 			return Plan{}, fmt.Errorf("the stack of %s stays because %s %s, and a rebase does not resolve that", names[0], name, o.Text())
 		}
 		if o.Kind == Moves && b.HasMergeCommit {

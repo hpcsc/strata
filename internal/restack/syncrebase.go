@@ -83,7 +83,7 @@ func (s *syncRebase) start(ctx context.Context, plan Plan, stacks [][]string) (m
 }
 
 func (s *syncRebase) waitsError() error {
-	return fmt.Errorf("a sync rebase waits in %s: finish it there with git rebase --continue, or stop it with git rebase --abort", s.worktree())
+	return fmt.Errorf("a sync rebase waits in %s: finish it there with git rebase --continue, or end it with git rebase --abort", s.worktree())
 }
 
 func (s *syncRebase) waits() bool {

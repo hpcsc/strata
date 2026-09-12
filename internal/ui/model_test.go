@@ -647,13 +647,13 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("S after an aborted sync rebase removes what it left, and plans as usual", func(t *testing.T) {
-			sync := &memorySync{plan: planned(), pending: restack.Pending{State: restack.RebaseStopped, Stack: "events"}}
+			sync := &memorySync{plan: planned(), pending: restack.Pending{State: restack.RebaseAborted, Stack: "events"}}
 
 			view := screen(press(startWithSync(sync), "S"))
 
 			require.Equal(t, 1, sync.finished)
 			require.Contains(t, view, "sync plan")
-			require.Contains(t, view, "The sync rebase for the stack of events stopped, and no branch moved.")
+			require.Contains(t, view, "You aborted the sync rebase for the stack of events, and no branch moved.")
 		})
 
 		keyPress := func(m tea.Model, key string) (tea.Model, tea.Cmd) {

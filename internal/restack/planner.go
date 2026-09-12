@@ -62,7 +62,7 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 		}
 		outcomes[b.Name] = o
 	}
-	keepStacksWhole(tree, outcomes)
+	blockStacks(tree, outcomes)
 	check, err := newWorktreeCheck(ctx, p.git)
 	if err != nil {
 		return Plan{}, err
@@ -72,7 +72,7 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 			return Plan{}, err
 		}
 	}
-	keepStacksWhole(tree, outcomes)
+	blockStacks(tree, outcomes)
 	return Plan{Tree: tree, NewCommits: newCommits, TrunkTip: tip, Outcomes: outcomes}, nil
 }
 
@@ -123,7 +123,7 @@ func (p *Planner) outcome(ctx context.Context, trunk, tip, treeOfTip string, b s
 	case b.Behind == 0 && (b.Parent == trunk || parent.Kind == UpToDate):
 		o.Kind, o.NewTip = UpToDate, b.Tip
 	case onto == "":
-		// the parent stays, so keepStacksWhole names the branch that blocks this one
+		// the parent stays, so blockStacks names the branch that blocks this one
 	case b.HasMergeCommit:
 		o.Kind = MergeCommit
 	case b.Commits == 0:
@@ -189,11 +189,11 @@ func (p *Planner) conflictFiles(ctx context.Context, onto string, b stack.Branch
 	return files, nil
 }
 
-func keepStacksWhole(tree stack.Tree, outcomes map[string]Outcome) {
+func blockStacks(tree stack.Tree, outcomes map[string]Outcome) {
 	for _, names := range stacksOf(tree) {
 		blocker := ""
 		for _, name := range names {
-			if outcomes[name].Kind.keepsStack() {
+			if outcomes[name].Kind.blocksStack() {
 				blocker = name
 				break
 			}

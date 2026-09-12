@@ -178,7 +178,7 @@ func TestResolver(t *testing.T) {
 			require.Equal(t, commit(t, repo, "refs/strata/sync/handler"), pending.Plan.Outcomes["handler"].NewTip)
 		})
 
-		t.Run("a sync rebase that the user aborted stopped", func(t *testing.T) {
+		t.Run("a sync rebase that the user aborted is aborted", func(t *testing.T) {
 			repo := conflicted(t)
 			_, err := resolver(repo).Start(ctx, plan(t, repo), "events")
 			require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestResolver(t *testing.T) {
 			pending, err := resolver(repo).Pending(ctx)
 
 			require.NoError(t, err)
-			require.Equal(t, restack.RebaseStopped, pending.State)
+			require.Equal(t, restack.RebaseAborted, pending.State)
 		})
 	})
 

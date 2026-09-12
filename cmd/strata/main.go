@@ -222,11 +222,11 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 		fmt.Fprintf(out, "The sync rebase for the stack of %s is done.", pending.Stack)
 		problems = append(problems, printMoved(out, result)...)
 		fmt.Fprintln(out)
-	case pending.State == restack.RebaseStopped && !dryRun:
+	case pending.State == restack.RebaseAborted && !dryRun:
 		if _, err := resolver.Finish(ctx); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "The sync rebase for the stack of %s stopped, and no branch of it moved.\n\n", pending.Stack)
+		fmt.Fprintf(out, "You aborted the sync rebase for the stack of %s, and no branch of it moved.\n\n", pending.Stack)
 	}
 
 	plan, err := restack.NewPlanner(repo, repo.Fetch, trunk, patternsOf(cmd)).Plan(ctx)
@@ -246,7 +246,7 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 		if started.State == restack.RebaseWaits {
 			fmt.Fprintf(out, "\nThe sync rebase for the stack of %s stopped at the conflict, in %s.\n"+
 				"Resolve the conflict there and run git rebase --continue. Then run strata sync to move the stack.\n"+
-				"git rebase --abort stops the sync rebase, and no branch moves.\n", started.Stack, started.Worktree)
+				"git rebase --abort ends the sync rebase, and no branch moves.\n", started.Stack, started.Worktree)
 			return errors.New("the sync rebase waits for you to resolve the conflict")
 		}
 		result, err := resolver.Finish(ctx)

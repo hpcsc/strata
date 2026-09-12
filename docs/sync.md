@@ -157,7 +157,7 @@ A conflict stops only the stack that has it. To resolve the conflict:
 
    Both moves use the checks and the transaction of any move.
 
-`git rebase --abort` stops the sync rebase, and no branch moves.
+`git rebase --abort` ends the sync rebase, and no branch moves.
 
 strata keeps a record of the sync rebase in `.git/strata/sync/plan`: the branches of the stack, their old
 tips and their worktrees. The rebase writes the new tip of each branch to `refs/strata/sync/<branch>`.
@@ -167,7 +167,7 @@ strata reads these to find the state of the sync rebase:
 | --- | --- |
 | The rebase waits | `S`, `enter`, `strata sync` and `strata sync --resolve` tell you to finish the rebase first, and move nothing. |
 | The rebase is done | `S` shows the plan of the resolved stack, and `enter` moves it. `strata sync` moves it. |
-| The rebase stopped | strata removes the record, the sync worktree and the refs. No branch moved. |
+| You aborted the rebase | strata removes the record, the sync worktree and the refs. No branch moved. |
 
 ```mermaid
 stateDiagram-v2
@@ -175,9 +175,9 @@ stateDiagram-v2
     Plan --> Moved: enter, for the stacks with no conflict
     Plan --> Waits: c or --resolve
     Waits --> Done: git rebase --continue
-    Waits --> Stopped: git rebase --abort
+    Waits --> Aborted: git rebase --abort
     Done --> Moved: enter or strata sync
-    Stopped --> [*]: no branch moved
+    Aborted --> [*]: no branch moved
     Moved --> [*]
 ```
 

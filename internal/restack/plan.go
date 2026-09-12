@@ -21,7 +21,7 @@ const (
 	Stale
 )
 
-func (k Kind) keepsStack() bool {
+func (k Kind) blocksStack() bool {
 	switch k {
 	case Conflict, MergeCommit, Loop, Rebasing, WorktreeGone, Changes, Stale:
 		return true

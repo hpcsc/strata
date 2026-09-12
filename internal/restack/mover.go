@@ -109,7 +109,7 @@ func (m *Mover) moveStack(ctx context.Context, plan Plan, names []string, check 
 		if err != nil {
 			return "", err
 		}
-		if checked.Kind.keepsStack() {
+		if checked.Kind.blocksStack() {
 			return name + " " + checked.Text(), nil
 		}
 		switch {

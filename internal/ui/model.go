@@ -473,11 +473,11 @@ func (m Model) readSync(replan bool) tea.Cmd {
 			return planLoaded{err: pending.WaitsError()}
 		case restack.RebaseDone:
 			return planLoaded{plan: pending.Plan, resolved: true}
-		case restack.RebaseStopped:
+		case restack.RebaseAborted:
 			if _, err := sync.Finish(ctx); err != nil {
 				return planLoaded{err: err}
 			}
-			notice = "The sync rebase for the stack of " + pending.Stack + " stopped, and no branch moved."
+			notice = "You aborted the sync rebase for the stack of " + pending.Stack + ", and no branch moved."
 		}
 		if !replan {
 			return planLoaded{notice: notice, keepPlan: true}
@@ -807,7 +807,7 @@ func shellIn(p restack.Pending) *exec.Cmd {
 		shell = "/bin/sh"
 	}
 	message := "strata: resolve the conflict of the stack of " + p.Stack + " here, then run git rebase --continue.\n" +
-		"git rebase --abort stops the sync rebase. Exit the shell to go back to strata."
+		"git rebase --abort ends the sync rebase. Exit the shell to go back to strata."
 	cmd := exec.Command("/bin/sh", "-c", `printf '%s\n' "$1"; exec "$2"`, "sh", message, shell)
 	cmd.Dir = p.Worktree
 	return cmd
