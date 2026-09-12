@@ -19,7 +19,6 @@ const (
 	WorktreeGone
 	Changes
 	Stale
-	Blocked
 )
 
 func (k Kind) keepsStack() bool {
@@ -31,18 +30,22 @@ func (k Kind) keepsStack() bool {
 }
 
 type Outcome struct {
-	Kind      Kind
-	NewParent string
-	// NewTip is empty for a branch that stays or that the sync deletes.
+	Kind         Kind
+	NewParent    string
 	NewTip       string
 	Worktree     string
 	UpstreamGone bool
 	Files        []string
-	Blocker      string
-	Keep         bool
+	// Blocker names the branch that makes the stack of this branch stay. Kind
+	// then tells what the sync does to this branch once that branch can move.
+	Blocker string
+	Keep    bool
 }
 
 func (o Outcome) Text() string {
+	if o.Blocker != "" {
+		return "stays: " + o.Blocker + " cannot move"
+	}
 	var text string
 	switch o.Kind {
 	case Moves:
@@ -75,8 +78,6 @@ func (o Outcome) Text() string {
 		return "stays: changes in " + o.Worktree + ": " + strings.Join(o.Files, ", ")
 	case Stale:
 		return "stays: it changed in " + o.Worktree
-	case Blocked:
-		return "stays: " + o.Blocker + " cannot move"
 	default:
 		text = "up to date"
 	}
@@ -141,7 +142,11 @@ func (p Plan) StacksThatMove() int {
 func (p Plan) stackMoves(names []string) bool {
 	changes := false
 	for _, name := range names {
-		switch o := p.Outcomes[name]; o.Kind {
+		o := p.Outcomes[name]
+		if o.Blocker != "" {
+			return false
+		}
+		switch o.Kind {
 		case UpToDate:
 		case Moves:
 			changes = true

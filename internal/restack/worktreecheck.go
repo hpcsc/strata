@@ -43,7 +43,7 @@ func (w *worktreeCheck) outcome(ctx context.Context, b stack.Branch, o Outcome) 
 	if worktree, ok := w.rebasedIn[b.Ref]; ok {
 		return Outcome{Kind: Rebasing, NewParent: o.NewParent, Worktree: worktree}, nil
 	}
-	if b.Worktree == "" || o.Kind != Moves {
+	if b.Worktree == "" || o.Kind != Moves || o.Blocker != "" {
 		return o, nil
 	}
 	o.Worktree = b.Worktree

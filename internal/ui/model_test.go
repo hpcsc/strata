@@ -529,7 +529,7 @@ func TestModel(t *testing.T) {
 		t.Run("enter in a plan with no stack to move moves nothing", func(t *testing.T) {
 			var moved []restack.Plan
 			p := planned()
-			p.Outcomes["events"] = restack.Outcome{Kind: restack.Blocked, NewParent: "origin/main", Blocker: "handler"}
+			p.Outcomes["events"] = restack.Outcome{Kind: restack.Moves, NewParent: "origin/main", Blocker: "handler"}
 			sync := memorySync{plan: p, moved: &moved}
 
 			view := screen(press(startMoving(sync, restacked()), "S", "enter"))

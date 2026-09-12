@@ -214,7 +214,7 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 
 		if p.plan != nil {
 			o := p.plan.Outcomes[b.Name]
-			rows = append(rows, gutter+label+"  "+outcomeStyle(o.Kind).Render(o.Text()))
+			rows = append(rows, gutter+label+"  "+outcomeStyle(o).Render(o.Text()))
 			continue
 		}
 		stats := dimText.Render(fmt.Sprintf("%-11s %-9s", plural(b.Commits, "commit"), plural(b.Files, "file"))) +
@@ -230,9 +230,12 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 	return window(rows, p.offset, p.height)
 }
 
-func outcomeStyle(kind restack.Kind) lipgloss.Style {
-	switch kind {
-	case restack.UpToDate, restack.Blocked:
+func outcomeStyle(o restack.Outcome) lipgloss.Style {
+	if o.Blocker != "" {
+		return dimText
+	}
+	switch o.Kind {
+	case restack.UpToDate:
 		return dimText
 	case restack.Moves:
 		return addedText

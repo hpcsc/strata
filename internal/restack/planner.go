@@ -122,7 +122,7 @@ func (p *Planner) outcome(ctx context.Context, trunk, tip, treeOfTip string, b s
 	case b.Behind == 0 && (b.Parent == trunk || parent.Kind == UpToDate):
 		o.Kind, o.NewTip = UpToDate, b.Tip
 	case onto == "":
-		o.Kind = Blocked
+		// the parent stays, so keepStacksWhole names the branch that blocks this one
 	case b.HasMergeCommit:
 		o.Kind = MergeCommit
 	case b.Commits == 0:
@@ -201,9 +201,9 @@ func keepStacksWhole(tree stack.Tree, outcomes map[string]Outcome) {
 			continue
 		}
 		for _, name := range names {
-			o := outcomes[name]
-			if o.Kind == Moves || o.Kind == Merged || o.Kind == Blocked {
-				outcomes[name] = Outcome{Kind: Blocked, NewParent: o.NewParent, Blocker: blocker}
+			if o := outcomes[name]; o.Kind == Moves || o.Kind == Merged {
+				o.Blocker = blocker
+				outcomes[name] = o
 			}
 		}
 	}
