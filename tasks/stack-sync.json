@@ -246,7 +246,7 @@
     },
     {
       "n": 10,
-      "done": false,
+      "done": true,
       "title": "Resolve a conflict with `strata sync --resolve`",
       "language": "Go",
       "testable": true,

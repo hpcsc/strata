@@ -24,8 +24,19 @@ func (r *Repo) Run(ctx context.Context, args ...string) (string, error) {
 }
 
 func (r *Repo) RunInput(ctx context.Context, stdin string, args ...string) (string, error) {
+	return r.execute(ctx, stdin, nil, args)
+}
+
+// RunEnv gives git the variables in env in place of the variables of strata
+// with the same names.
+func (r *Repo) RunEnv(ctx context.Context, env []string, args ...string) (string, error) {
+	return r.execute(ctx, "", env, args)
+}
+
+func (r *Repo) execute(ctx context.Context, stdin string, env, args []string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := r.command(ctx, args)
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

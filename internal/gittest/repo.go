@@ -35,6 +35,10 @@ func New(t testing.TB) *Repo {
 	return r
 }
 
+func (r *Repo) In(dir string) *Repo {
+	return &Repo{t: r.t, Dir: dir, origin: r.origin}
+}
+
 func (r *Repo) Git(args ...string) string {
 	r.t.Helper()
 	return run(r.t, r.Dir, args...)

@@ -82,6 +82,7 @@ func newCommand(syncErr error) *cli.Command {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "dry-run", Usage: "print the plan and change nothing"},
 					&cli.BoolFlag{Name: "keep-merged", Usage: "do not delete the branches that the trunk has merged"},
+					&cli.StringFlag{Name: "resolve", Usage: "start a sync rebase for the stack of this branch, which stops at its conflict for you to resolve"},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					if syncErr != nil {
@@ -187,11 +188,45 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Bool("remote") {
 		return restack.ErrRemote
 	}
+	dryRun, resolve := cmd.Bool("dry-run"), cmd.String("resolve")
+	if dryRun && resolve != "" {
+		return errors.New("--dry-run and --resolve do not go together: --resolve starts a rebase")
+	}
 	repo := git.New(".")
 	trunk, err := trunkOf(ctx, cmd, repo)
 	if err != nil {
 		return err
 	}
+	out := cmd.Root().Writer
+	mover := restack.NewMover(repo)
+	resolver := restack.NewResolver(repo, mover)
+	var problems []string
+
+	pending, err := resolver.Pending(ctx)
+	if err != nil {
+		return err
+	}
+	switch {
+	case pending.State == restack.RebaseWaits:
+		_, err := resolver.Finish(ctx)
+		return err
+	case pending.State == restack.RebaseDone && dryRun:
+		fmt.Fprintf(out, "The sync rebase for the stack of %s is done, and strata sync moves that stack first.\n\n", pending.Stack)
+	case pending.State == restack.RebaseDone:
+		result, err := resolver.Finish(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "The sync rebase for the stack of %s is done.", pending.Stack)
+		problems = append(problems, printMoved(out, result)...)
+		fmt.Fprintln(out)
+	case pending.State == restack.RebaseStopped && !dryRun:
+		if _, err := resolver.Finish(ctx); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "The sync rebase for the stack of %s stopped, and no branch of it moved.\n\n", pending.Stack)
+	}
+
 	plan, err := restack.NewPlanner(repo, repo.Fetch, trunk, patternsOf(cmd)).Plan(ctx)
 	if err != nil {
 		return err
@@ -199,33 +234,59 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Bool("keep-merged") {
 		plan = plan.KeepMerged()
 	}
-	out := cmd.Root().Writer
 	printPlan(out, plan)
 
-	var problems []string
+	if resolve != "" {
+		started, err := resolver.Start(ctx, plan, resolve)
+		if err != nil {
+			return err
+		}
+		if started.State == restack.RebaseWaits {
+			fmt.Fprintf(out, "\nThe sync rebase for the stack of %s stopped at the conflict, in %s.\n"+
+				"Resolve the conflict there and run git rebase --continue. Then run strata sync to move the stack.\n"+
+				"git rebase --abort stops the sync rebase, and no branch moves.\n", started.Stack, started.Worktree)
+			return errors.New("the sync rebase waits for you to resolve the conflict")
+		}
+		result, err := resolver.Finish(ctx)
+		if err != nil {
+			return err
+		}
+		problems = append(problems, printMoved(out, result)...)
+		return joinProblems(problems)
+	}
+
 	switch n := plan.StacksWithConflict(); {
 	case n == 1:
 		problems = append(problems, "1 stack stays because of a conflict")
 	case n > 1:
 		problems = append(problems, fmt.Sprintf("%d stacks stay because of conflicts", n))
 	}
-	if !cmd.Bool("dry-run") {
-		result, err := restack.NewMover(repo).Move(ctx, plan)
+	if !dryRun {
+		result, err := mover.Move(ctx, plan)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "\nMoved %s.\n", plural(result.Moved, "stack"))
-		for _, s := range result.Stayed {
-			fmt.Fprintf(out, "The stack of %s stays: %s\n", s.Stack, s.Reason)
-		}
-		if n := len(result.Stayed); n > 0 {
-			problems = append(problems, plural(n, "stack")+" did not move")
-		}
+		problems = append(problems, printMoved(out, result)...)
 	}
-	if len(problems) > 0 {
-		return errors.New(strings.Join(problems, "; "))
+	return joinProblems(problems)
+}
+
+func printMoved(w io.Writer, result restack.Result) (problems []string) {
+	fmt.Fprintf(w, "\nMoved %s.\n", plural(result.Moved, "stack"))
+	for _, s := range result.Stayed {
+		fmt.Fprintf(w, "The stack of %s stays: %s\n", s.Stack, s.Reason)
 	}
-	return nil
+	if n := len(result.Stayed); n > 0 {
+		problems = append(problems, plural(n, "stack")+" did not move")
+	}
+	return problems
+}
+
+func joinProblems(problems []string) error {
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(problems, "; "))
 }
 
 func trunkOf(ctx context.Context, cmd *cli.Command, repo *git.Repo) (string, error) {

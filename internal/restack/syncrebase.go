@@ -27,29 +27,19 @@ func (s *syncRebase) worktree() string {
 	return filepath.Join(s.dir, "worktree")
 }
 
+func (s *syncRebase) recordFile() string {
+	return filepath.Join(s.dir, "plan")
+}
+
 func (s *syncRebase) commits(ctx context.Context, plan Plan, stacks [][]string) (newTips map[string]string, err error) {
-	todo, moving, err := s.todo(ctx, plan, stacks)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return nil, err
-	}
-	todoFile := filepath.Join(s.dir, "todo")
-	if err := os.WriteFile(todoFile, []byte(todo), 0o644); err != nil {
-		return nil, err
-	}
-	s.removeWorktree(ctx)
-	if _, err := s.git.Run(ctx, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--force", "--detach", s.worktree(), plan.TrunkTip); err != nil {
-		return nil, err
-	}
+	moving, stopped, err := s.start(ctx, plan, stacks)
 	defer s.removeWorktree(ctx)
-	_, err = s.git.Run(ctx, "-c", "core.hooksPath=/dev/null", "-c", "sequence.editor=cp "+shellQuote(todoFile),
-		"-C", s.worktree(), "rebase", "--interactive", "--empty=keep", "--no-update-refs", plan.TrunkTip)
 	if err != nil {
-		_, _ = s.git.Run(ctx, "-C", s.worktree(), "rebase", "--abort")
+		if stopped {
+			_, _ = s.git.Run(ctx, "-C", s.worktree(), "rebase", "--abort")
+		}
 		_ = s.forget(ctx, moving)
-		return nil, fmt.Errorf("make the commits of the sync: %w", err)
+		return nil, err
 	}
 	newTips, err = s.newTips(ctx)
 	if err != nil {
@@ -61,6 +51,66 @@ func (s *syncRebase) commits(ctx context.Context, plan Plan, stacks [][]string) 
 		}
 	}
 	return newTips, nil
+}
+
+// start leaves the state of the rebase in the sync worktree when the rebase
+// stops, and then reports stopped.
+func (s *syncRebase) start(ctx context.Context, plan Plan, stacks [][]string) (moving []string, stopped bool, err error) {
+	if s.waits() {
+		return nil, false, s.waitsError()
+	}
+	todo, moving, err := s.todo(ctx, plan, stacks)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return nil, false, err
+	}
+	todoFile := filepath.Join(s.dir, "todo")
+	if err := os.WriteFile(todoFile, []byte(todo), 0o644); err != nil {
+		return nil, false, err
+	}
+	s.removeWorktree(ctx)
+	if _, err := s.git.Run(ctx, "-c", "core.hooksPath=/dev/null", "worktree", "add", "--force", "--detach", s.worktree(), plan.TrunkTip); err != nil {
+		return nil, false, err
+	}
+	_, err = s.git.RunEnv(ctx, []string{"GIT_SEQUENCE_EDITOR=cp " + shellQuote(todoFile)},
+		"-c", "core.hooksPath=/dev/null", "-C", s.worktree(), "rebase", "--interactive", "--empty=keep", "--no-update-refs", plan.TrunkTip)
+	if err != nil {
+		return moving, s.waits(), fmt.Errorf("make the commits of the sync: %w", err)
+	}
+	return moving, false, nil
+}
+
+func (s *syncRebase) waitsError() error {
+	return fmt.Errorf("a sync rebase waits in %s: finish it there with git rebase --continue, or stop it with git rebase --abort", s.worktree())
+}
+
+func (s *syncRebase) waits() bool {
+	admin := s.adminDir()
+	if admin == "" {
+		return false
+	}
+	for _, state := range []string{"rebase-merge", "rebase-apply"} {
+		if _, err := os.Stat(filepath.Join(admin, state)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// adminDir returns the folder under .git/worktrees that holds the state of the
+// sync worktree, which its .git file names.
+func (s *syncRebase) adminDir() string {
+	data, err := os.ReadFile(filepath.Join(s.worktree(), ".git"))
+	if err != nil {
+		return ""
+	}
+	dir := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(s.worktree(), dir)
+	}
+	return dir
 }
 
 func (s *syncRebase) todo(ctx context.Context, plan Plan, stacks [][]string) (todo string, moving []string, err error) {
@@ -112,18 +162,27 @@ func (s *syncRebase) newTips(ctx context.Context) (map[string]string, error) {
 }
 
 func (s *syncRebase) forget(ctx context.Context, names []string) error {
+	tips, err := s.newTips(ctx)
+	if err != nil {
+		return err
+	}
 	var deletes []string
 	for _, name := range names {
-		deletes = append(deletes, "delete "+newTipRefs+name)
+		if tip, ok := tips[name]; ok {
+			deletes = append(deletes, "delete "+newTipRefs+name+" "+tip)
+		}
 	}
 	if len(deletes) == 0 {
 		return nil
 	}
-	_, err := s.git.RunInput(ctx, "start\n"+strings.Join(deletes, "\n")+"\ncommit\n", "update-ref", "--stdin")
+	_, err = s.git.RunInput(ctx, "start\n"+strings.Join(deletes, "\n")+"\ncommit\n", "update-ref", "--stdin")
 	return err
 }
 
 func (s *syncRebase) removeWorktree(ctx context.Context) {
+	if s.waits() {
+		return
+	}
 	if _, err := os.Stat(s.worktree()); err == nil {
 		_, _ = s.git.Run(ctx, "worktree", "remove", "--force", s.worktree())
 	}

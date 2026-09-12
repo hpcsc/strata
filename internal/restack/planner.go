@@ -12,6 +12,7 @@ import (
 type runner interface {
 	Run(ctx context.Context, args ...string) (string, error)
 	RunInput(ctx context.Context, stdin string, args ...string) (string, error)
+	RunEnv(ctx context.Context, env []string, args ...string) (string, error)
 	Check(ctx context.Context, args ...string) (bool, error)
 	Try(ctx context.Context, args ...string) (string, bool, error)
 }

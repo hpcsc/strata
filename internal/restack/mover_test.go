@@ -326,6 +326,44 @@ func TestMover(t *testing.T) {
 			require.Equal(t, []string{"Fix the UI"}, signed(t, repo, "origin/main", "fix(ui);x"))
 		})
 
+		t.Run("uses the todo list of strata when the user sets GIT_SEQUENCE_EDITOR", func(t *testing.T) {
+			t.Setenv("GIT_SEQUENCE_EDITOR", "true")
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, []string{"Name the events"}, signed(t, repo, "origin/main", "events"))
+		})
+
+		t.Run("moves nothing while a sync rebase waits, and keeps that rebase", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			repo.SignWithFakeGPG()
+			g := git.New(repo.Dir)
+			waiting, err := restack.NewResolver(g, restack.NewMover(g)).Start(context.Background(), plan(t, repo), "events")
+			require.NoError(t, err)
+			billingBefore := commit(t, repo, "billing")
+
+			_, err = restack.NewMover(g).Move(context.Background(), plan(t, repo))
+
+			require.ErrorContains(t, err, "git rebase --continue")
+			require.Equal(t, billingBefore, commit(t, repo, "billing"))
+			require.Equal(t, "UU README.md\n", repo.In(waiting.Worktree).Git("status", "--porcelain"))
+		})
+
 		t.Run("leaves no sync worktree and no ref in refs/strata/sync/", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
@@ -414,6 +452,22 @@ func TestMover(t *testing.T) {
 			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "HEAD"))
 			require.Equal(t, "events", strings.TrimSpace(repo.Git("branch", "--show-current")))
 			require.Empty(t, repo.Git("status", "--porcelain"))
+		})
+
+		t.Run("moves a branch that a worktree checked out after the plan, with its files", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			p := plan(t, repo)
+			worktree := repo.Worktree("events")
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, worktree, "HEAD"))
+			require.Empty(t, worktree.Git("status", "--porcelain"))
 		})
 
 		t.Run("keeps uncommitted changes in files that the move does not change", func(t *testing.T) {

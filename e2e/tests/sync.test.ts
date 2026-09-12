@@ -100,6 +100,35 @@ describe('strata sync', () => {
   })
 })
 
+describe('strata sync --resolve', () => {
+  it('stops at the conflict, and strata sync moves the stack after git rebase --continue', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')
+
+    const started = await runStrata(repo.dir, ['sync', '--resolve', 'orders-events'])
+
+    expect(started.status).toBe(1)
+    const worktree = started.stdout.match(/stopped at the conflict, in (.+)\.\n/)?.[1]
+    expect(worktree).toBeDefined()
+    const waiting = await runStrata(repo.dir, ['sync'])
+    expect(waiting.status).toBe(1)
+    expect(waiting.stderr).toContain(`waits in ${worktree}`)
+
+    const sync = repo.worktree(worktree as string)
+    sync.write('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n\ntype OrderPlaced struct{}\n')
+    sync.git('add', 'orders/events.go')
+    sync.git('-c', 'core.editor=true', 'rebase', '--continue')
+    const finished = await runStrata(repo.dir, ['sync'])
+
+    expect(finished.status).toBe(0)
+    expect(finished.stdout).toContain('The sync rebase for the stack of orders-events is done.')
+    const list = await runStrata(repo.dir, ['--list'])
+    expect(list.stdout).not.toContain('behind parent')
+    expect(repo.git('show', 'orders-events:orders/events.go')).toContain('OrderShipped')
+    expect(repo.git('status', '--porcelain')).toBe('')
+  })
+})
+
 describe('strata sync --dry-run', () => {
   it('is in the help', async () => {
     const result = await runStrata(ordersRepo().dir, ['--help'])

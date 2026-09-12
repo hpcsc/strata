@@ -90,6 +90,10 @@ export class Repo {
     this.git('switch', '-q', branch)
   }
 
+  worktree(dir: string): Repo {
+    return new Repo(dir, this.origin)
+  }
+
   commitOnOrigin(path: string, content: string, message: string): void {
     const dir = join(scratchDir(), 'teammate')
     git(dirname(dir), 'clone', '-q', this.origin, dir)

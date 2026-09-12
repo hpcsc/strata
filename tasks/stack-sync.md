@@ -684,25 +684,25 @@ one of three states:
 - **The rebase stopped:** strata removes the record, the refs and the sync worktree. No branch moved.
 
 **Acceptance Criteria:**
-- [ ] `strata sync --resolve <branch>`, for a branch of a stack with a conflict, stops at the conflict,
+- [x] `strata sync --resolve <branch>`, for a branch of a stack with a conflict, stops at the conflict,
   prints the path of the sync worktree, exits 1, and moves no branch. `git status` in the sync worktree
   shows the conflict.
-- [ ] strata resolves no conflict by itself, and uses no `-X ours` or `-X theirs`.
-- [ ] The record at `.git/strata/sync/plan` holds the branches of the stack, the old tip of each, and their
+- [x] strata resolves no conflict by itself, and uses no `-X ours` or `-X theirs`.
+- [x] The record at `.git/strata/sync/plan` holds the branches of the stack, the old tip of each, and their
   worktrees.
-- [ ] While the rebase waits, these commands move no branch, tell you to finish the rebase in the sync
+- [x] While the rebase waits, these commands move no branch, tell you to finish the rebase in the sync
   worktree first, and exit 1:
   - `strata sync`, with or without `--dry-run`.
   - `strata sync --resolve`.
-- [ ] After `git rebase --continue` in the sync worktree, `strata sync` moves the resolved stack to the tips
+- [x] After `git rebase --continue` in the sync worktree, `strata sync` moves the resolved stack to the tips
   in `refs/strata/sync/`. The move runs the checks of Task 4, and a transaction on the old tips of the
   record.
-- [ ] strata then removes the record, the refs and the sync worktree, and syncs the other stacks.
-- [ ] A branch of the resolved stack can move after `--resolve`. Then the move of that stack fails, and no
+- [x] strata then removes the record, the refs and the sync worktree, and syncs the other stacks.
+- [x] A branch of the resolved stack can move after `--resolve`. Then the move of that stack fails, and no
   branch of the stack moves.
-- [ ] After `git rebase --abort`, `strata sync` removes the record, the sync worktree and every ref in
+- [x] After `git rebase --abort`, `strata sync` removes the record, the sync worktree and every ref in
   `refs/strata/sync/`. The sync rebase moved no branch, and the sync then runs as usual.
-- [ ] With `commit.gpgsign=true`, the commits of the resolved stack have signatures.
+- [x] With `commit.gpgsign=true`, the commits of the resolved stack have signatures.
 
 **Affected Files/Modules:**
 - `internal/restack/`: the sync rebase for one stack, the record, and the three states, with integration
