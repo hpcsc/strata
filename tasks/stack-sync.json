@@ -140,7 +140,7 @@
     },
     {
       "n": 6,
-      "done": false,
+      "done": true,
       "title": "Move checked-out branches in their worktrees",
       "language": "Go",
       "testable": true,

@@ -4,6 +4,8 @@ package restack_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -203,22 +205,6 @@ func TestMover(t *testing.T) {
 			require.Equal(t, eventsBefore, commit(t, repo, "events"))
 		})
 
-		t.Run("a stack with a checked-out branch that must move stays", func(t *testing.T) {
-			repo := gittest.New(t)
-			repo.SwitchNew("events")
-			repo.Commit("events.go", "package orders\n", "Name the events")
-			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
-			eventsBefore := commit(t, repo, "events")
-			p := plan(t, repo)
-
-			result := move(t, repo, p)
-
-			require.Equal(t, 0, result.Moved)
-			require.Len(t, result.Stayed, 1)
-			require.Contains(t, result.Stayed[0].Reason, "checked out in")
-			require.Equal(t, eventsBefore, commit(t, repo, "events"))
-		})
-
 		t.Run("moves no branch when commit.gpgsign is true", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
@@ -233,6 +219,128 @@ func TestMover(t *testing.T) {
 
 			require.ErrorContains(t, err, "commit.gpgsign")
 			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+		})
+	})
+
+	t.Run("move in worktrees", func(t *testing.T) {
+		t.Run("moves a branch that a linked worktree has checked out, with its files", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
+			worktree := repo.Worktree("handler")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "events"))
+			require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, worktree, "HEAD"))
+			require.Empty(t, worktree.Git("status", "--porcelain"))
+			require.Equal(t, "shop\n\nopen all day\n", worktree.Git("show", "HEAD:README.md"))
+		})
+
+		t.Run("moves a branch that the worktree of strata has checked out", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			p := plan(t, repo)
+
+			result := move(t, repo, p)
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "HEAD"))
+			require.Equal(t, "events", strings.TrimSpace(repo.Git("branch", "--show-current")))
+			require.Empty(t, repo.Git("status", "--porcelain"))
+		})
+
+		t.Run("keeps uncommitted changes in files that the move does not change", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Write("events.go", "package orders\n\n// mine\n")
+			p := plan(t, repo)
+
+			move(t, repo, p)
+
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, worktree, "HEAD"))
+			require.Equal(t, " M events.go\n", worktree.Git("status", "--porcelain"))
+		})
+
+		t.Run("a commit in a worktree after the plan keeps the stack where it is", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.Switch("main")
+			worktree := repo.Worktree("handler")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			eventsBefore := commit(t, repo, "events")
+			p := plan(t, repo)
+			worktree.Commit("handler.go", "package orders\n\n// more\n", "Continue the handler")
+			handlerAfterCommit := commit(t, worktree, "HEAD")
+
+			result := move(t, repo, p)
+
+			require.Equal(t, 0, result.Moved)
+			require.Len(t, result.Stayed, 1)
+			require.Contains(t, result.Stayed[0].Reason, "it changed in")
+			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			require.Equal(t, handlerAfterCommit, commit(t, repo, "handler"))
+		})
+
+		t.Run("changes after the plan in a file that the move changes keep the stack where it is", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			eventsBefore := commit(t, repo, "events")
+			p := plan(t, repo)
+			worktree.Write("README.md", "shop\n\nmine\n")
+
+			result := move(t, repo, p)
+
+			require.Equal(t, 0, result.Moved)
+			require.Len(t, result.Stayed, 1)
+			require.Contains(t, result.Stayed[0].Reason, "changes in")
+			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			require.Equal(t, "shop\n\nmine\n", worktree.Read("README.md"))
+		})
+
+		t.Run("a move that fails in a worktree keeps the new tip in a ref, and the reason gives the command that finishes it", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			eventsBefore := commit(t, repo, "events")
+			p := plan(t, repo)
+			lock := filepath.Join(strings.TrimSpace(worktree.Git("rev-parse", "--absolute-git-dir")), "index.lock")
+			require.NoError(t, os.WriteFile(lock, nil, 0o644))
+
+			result := move(t, repo, p)
+
+			require.Equal(t, 0, result.Moved)
+			require.Len(t, result.Stayed, 1)
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "refs/strata/sync/events"))
+			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+			finish := "git -C " + p.Outcomes["events"].Worktree + " reset --keep refs/strata/sync/events"
+			require.Contains(t, result.Stayed[0].Reason, finish)
+
+			require.NoError(t, os.Remove(lock))
+			worktree.Git(strings.Fields(finish)[1:]...)
+			require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "events"))
 		})
 	})
 }

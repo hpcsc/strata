@@ -351,7 +351,7 @@ worktree whose branch the sync moves.
 - [x] A branch still moves when its worktree has changes only in files that the move does not change.
 - [x] The plan names the worktree of each branch that moves while a worktree has it checked out. This
   includes the worktree that strata runs in.
-- [ ] A worktree whose HEAD is not on the tip that the plan read makes its stack stay, and the outcome names
+- [x] A worktree whose HEAD is not on the tip that the plan read makes its stack stay, and the outcome names
   the worktree. Task 6 tests this at move time, where it can occur.
 - [x] The checks add at most two git processes for each branch in a worktree: `git status --porcelain=v2
   --branch` and `git diff --name-only`.
@@ -453,16 +453,16 @@ branch keeps its stack where it is. When `reset --keep` fails, strata keeps the 
 `refs/strata/sync/<branch>` and prints the command that finishes the move.
 
 **Acceptance Criteria:**
-- [ ] A stack with a branch checked out in a linked worktree moves.
-- [ ] A stack with a branch checked out in the worktree that strata runs in moves.
-- [ ] After the move, each such worktree is on the new tip. `git status` there shows no staged or unstaged
+- [x] A stack with a branch checked out in a linked worktree moves.
+- [x] A stack with a branch checked out in the worktree that strata runs in moves.
+- [x] After the move, each such worktree is on the new tip. `git status` there shows no staged or unstaged
   change that undoes the move.
-- [ ] Uncommitted changes in files that the move does not change are still in the worktree after the move.
-- [ ] A worktree can be off the old tip of its branch when the stack moves, for example after a commit in
+- [x] Uncommitted changes in files that the move does not change are still in the worktree after the move.
+- [x] A worktree can be off the old tip of its branch when the stack moves, for example after a commit in
   that worktree after the plan. Then the stack stays, and no branch of it moves.
-- [ ] Uncommitted changes that touch the move can appear in a worktree after the plan. Then the stack
+- [x] Uncommitted changes that touch the move can appear in a worktree after the plan. Then the stack
   stays, and no branch of it moves.
-- [ ] When `git reset --keep` fails in a worktree, the new tip of the branch is in
+- [x] When `git reset --keep` fails in a worktree, the new tip of the branch is in
   `refs/strata/sync/<branch>`, and `strata sync` prints a command that finishes the move and exits 1.
 
 **Affected Files/Modules:**

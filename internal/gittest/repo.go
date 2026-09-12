@@ -77,6 +77,13 @@ func (r *Repo) Write(path, content string) {
 	require.NoError(r.t, os.WriteFile(full, []byte(content), 0o644))
 }
 
+func (r *Repo) Read(path string) string {
+	r.t.Helper()
+	data, err := os.ReadFile(filepath.Join(r.Dir, path))
+	require.NoError(r.t, err)
+	return string(data)
+}
+
 func (r *Repo) SwitchNew(branch string) {
 	r.t.Helper()
 	r.Git("switch", "-q", "-c", branch)

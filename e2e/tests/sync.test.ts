@@ -18,6 +18,23 @@ describe('strata sync on git older than 2.44', () => {
   })
 })
 
+describe('strata sync', () => {
+  it('moves each stack onto the new trunk, with the checked-out branch and its files', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('README.md', '# shop\n\nOpen all day\n', 'Open all day')
+
+    const result = await runStrata(repo.dir, ['sync'])
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('Moved 2 stacks.')
+    const list = await runStrata(repo.dir, ['--list'])
+    expect(list.stdout).toMatch(/└─ orders-handler\s+2 commits/)
+    expect(list.stdout).not.toContain('behind parent')
+    expect(repo.git('status', '--porcelain')).toBe('')
+    expect(repo.git('show', 'HEAD:README.md')).toBe('# shop\n\nOpen all day\n')
+  })
+})
+
 describe('strata sync --dry-run', () => {
   it('is in the help', async () => {
     const result = await runStrata(ordersRepo().dir, ['--help'])

@@ -65,7 +65,7 @@ func (m *Mover) signs(ctx context.Context) (bool, error) {
 
 func (m *Mover) moveStack(ctx context.Context, plan Plan, names []string, check *worktreeCheck) (stayReason string, err error) {
 	var updates []string
-	var deleted []stack.Branch
+	var deleted, checkedOut []stack.Branch
 	for _, name := range names {
 		b, o := plan.Tree.Branches[plan.Tree.Index(name)], plan.Outcomes[name]
 		checked, err := check.outcome(ctx, b, o)
@@ -77,7 +77,7 @@ func (m *Mover) moveStack(ctx context.Context, plan Plan, names []string, check 
 		}
 		switch {
 		case o.Kind == Moves && b.Worktree != "":
-			return name + " is checked out in " + b.Worktree + ", and strata cannot move a checked-out branch yet", nil
+			checkedOut = append(checkedOut, b)
 		case o.Kind == Moves:
 			updates = append(updates, fmt.Sprintf("update %s %s %s", b.Ref, o.NewTip, b.Tip))
 		case o.Kind == Merged && !o.Keep && o.Worktree == "":
@@ -85,12 +85,37 @@ func (m *Mover) moveStack(ctx context.Context, plan Plan, names []string, check 
 			deleted = append(deleted, b)
 		}
 	}
-	transaction := "start\n" + strings.Join(updates, "\n") + "\ncommit\n"
-	if _, err := m.git.RunInput(ctx, transaction, "update-ref", "-m", "strata sync", "--stdin"); err != nil {
-		return "no branch of the stack moved: " + err.Error(), nil
+	if len(updates) > 0 {
+		transaction := "start\n" + strings.Join(updates, "\n") + "\ncommit\n"
+		if _, err := m.git.RunInput(ctx, transaction, "update-ref", "-m", "strata sync", "--stdin"); err != nil {
+			return "no branch of the stack moved: " + err.Error(), nil
+		}
 	}
 	for _, b := range deleted {
 		_, _, _ = m.git.Try(ctx, "config", "--remove-section", "branch."+b.Name)
 	}
-	return "", nil
+	var unfinished []string
+	for _, b := range checkedOut {
+		reason, err := m.moveInWorktree(ctx, b, plan.Outcomes[b.Name].NewTip)
+		if err != nil {
+			return "", err
+		}
+		if reason != "" {
+			unfinished = append(unfinished, reason)
+		}
+	}
+	return strings.Join(unfinished, "; "), nil
+}
+
+func (m *Mover) moveInWorktree(ctx context.Context, b stack.Branch, newTip string) (unfinished string, err error) {
+	_, resetErr := m.git.Run(ctx, "-C", b.Worktree, "reset", "--keep", newTip)
+	if resetErr == nil {
+		return "", nil
+	}
+	ref := "refs/strata/sync/" + b.Name
+	if _, err := m.git.Run(ctx, "update-ref", ref, newTip); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s did not move in %s (%v). To finish the move, run: git -C %s reset --keep %s",
+		b.Name, b.Worktree, resetErr, b.Worktree, ref), nil
 }
