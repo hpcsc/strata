@@ -58,7 +58,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
 		files:   newFilesPanel(sources.Viewed),
 		split:   true,
 	}
-	m.initial = m.sync()
+	m.initial = m.showSelection()
 	return m
 }
 
@@ -84,10 +84,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filesKey = ""
 		m.stack.replace(msg.tree)
 		m.layout()
-		return m, m.sync()
+		return m, m.showSelection()
 	}
 	if m.cache.store(msg) {
-		return m, m.sync()
+		return m, m.showSelection()
 	}
 	return m, nil
 }
@@ -176,7 +176,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.moveRow(len(m.files.rows) - 1)
 		case "o":
 			if m.files.toggleFolder() {
-				return m, m.sync()
+				return m, m.showSelection()
 			}
 		case "enter", "l", "right":
 			m.focus = focusDiff
@@ -253,7 +253,7 @@ func (m *Model) stepBranch(by int) tea.Cmd {
 	if !m.stack.step(by) {
 		return nil
 	}
-	return m.sync()
+	return m.showSelection()
 }
 
 func (m *Model) branchAtRow(row int) tea.Cmd {
@@ -261,7 +261,7 @@ func (m *Model) branchAtRow(row int) tea.Cmd {
 	if !m.stack.moveToRow(row) {
 		return nil
 	}
-	return m.sync()
+	return m.showSelection()
 }
 
 // keepFile remembers the selected file, to select it again on the next
@@ -302,7 +302,7 @@ func (m *Model) setQuery(target focus, text string) tea.Cmd {
 	case focusStack:
 		m.keepFile()
 		if m.stack.setFilter(query) {
-			return m.sync()
+			return m.showSelection()
 		}
 	case focusFiles:
 		if m.files.setFilter(query) {
@@ -332,7 +332,7 @@ func (m *Model) fileMoved() tea.Cmd {
 	if f, ok := m.files.selected(); ok {
 		m.wantPath = f.Path
 	}
-	return m.sync()
+	return m.showSelection()
 }
 
 func (m *Model) toggleViewed() tea.Cmd {
@@ -360,9 +360,9 @@ func (m Model) reloadTree() tea.Cmd {
 	}
 }
 
-// sync points the files and diff panels at the selected branch and file, and
+// showSelection points the files and diff panels at the selected branch and file, and
 // returns the commands that load whatever is not cached yet.
-func (m *Model) sync() tea.Cmd {
+func (m *Model) showSelection() tea.Cmd {
 	b, ok := m.stack.selected()
 	if !ok {
 		m.files.showNotice("no branches")
