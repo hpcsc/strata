@@ -31,11 +31,11 @@ type treeLoaded struct {
 }
 
 type planLoaded struct {
-	plan     restack.Plan
-	err      error
-	resolved bool
-	notice   string
-	keepPlan bool
+	plan       restack.Plan
+	err        error
+	rebaseDone bool
+	notice     string
+	keepPlan   bool
 }
 
 type stacksMoved struct {
@@ -69,14 +69,12 @@ type Model struct {
 	// filesKey names the branch whose files the files panel shows.
 	filesKey string
 	// wantPath is the file to select when the next branch's files arrive.
-	wantPath string
-	prompt   prompt
-	initial  tea.Cmd
-	busy     string
-	notice   string
-	// resolved is true when the plan on the screen is the stack of a sync
-	// rebase that is done, which enter moves with Finish.
-	resolved bool
+	wantPath   string
+	prompt     prompt
+	initial    tea.Cmd
+	busy       string
+	notice     string
+	rebaseDone bool
 }
 
 func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
@@ -112,13 +110,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status, m.notice = msg.status, msg.notice
 		m.cache.clear()
 		m.filesKey = ""
-		m.stack.plan, m.resolved = nil, false
+		m.stack.plan, m.rebaseDone = nil, false
 		m.stack.replace(msg.tree)
 		m.layout()
 		return m, m.showSelection()
 	case stacksMoved:
 		m.busy = ""
-		m.stack.plan, m.resolved = nil, false
+		m.stack.plan, m.rebaseDone = nil, false
 		if msg.err != nil {
 			return m, m.readTree(msg.err.Error(), "")
 		}
@@ -143,7 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cache.clear()
 		m.filesKey = ""
 		m.stack.showPlan(msg.plan)
-		m.resolved = msg.resolved
+		m.rebaseDone = msg.rebaseDone
 		m.focus = focusStack
 		m.layout()
 		return m, m.showSelection()
@@ -190,7 +188,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		if m.stack.plan != nil {
 			m.stack.closePlan()
-			m.resolved = false
+			m.rebaseDone = false
 			m.cache.clear()
 			m.filesKey = ""
 			m.layout()
@@ -472,7 +470,7 @@ func (m Model) readSync(replan bool) tea.Cmd {
 		case restack.RebaseWaits:
 			return planLoaded{err: pending.WaitsError()}
 		case restack.RebaseDone:
-			return planLoaded{plan: pending.Plan, resolved: true}
+			return planLoaded{plan: pending.Plan, rebaseDone: true}
 		case restack.RebaseAborted:
 			if _, err := sync.Finish(ctx); err != nil {
 				return planLoaded{err: err}
@@ -489,7 +487,7 @@ func (m Model) readSync(replan bool) tea.Cmd {
 
 func (m *Model) resolveConflict() tea.Cmd {
 	b, ok := m.stack.selected()
-	if !ok || m.busy != "" || m.stack.plan == nil || m.resolved || !m.stack.plan.StackHasConflict(b.Name) {
+	if !ok || m.busy != "" || m.stack.plan == nil || m.rebaseDone || !m.stack.plan.StackHasConflict(b.Name) {
 		return nil
 	}
 	m.busy = "starting the sync rebase…"
@@ -510,9 +508,9 @@ func (m *Model) moveStacks() tea.Cmd {
 		return nil
 	}
 	m.busy = "moving the stacks…"
-	ctx, sync, resolved := m.ctx, m.sources.Sync, m.resolved
+	ctx, sync, rebaseDone := m.ctx, m.sources.Sync, m.rebaseDone
 	return func() tea.Msg {
-		if resolved {
+		if rebaseDone {
 			result, err := sync.Finish(ctx)
 			return stacksMoved{result: result, err: err}
 		}
@@ -769,12 +767,12 @@ func (m Model) footer() string {
 	if m.stack.plan != nil {
 		keys := []string{"j/k branch"}
 		switch n := m.stack.plan.StacksThatMove(); {
-		case m.resolved:
+		case m.rebaseDone:
 			keys = append(keys, "enter move the resolved stack")
 		case n > 0:
 			keys = append(keys, "enter move "+plural(n, "stack"))
 		}
-		if b, ok := m.stack.selected(); ok && !m.resolved && m.stack.plan.StackHasConflict(b.Name) {
+		if b, ok := m.stack.selected(); ok && !m.rebaseDone && m.stack.plan.StackHasConflict(b.Name) {
 			keys = append(keys, "c resolve the conflict")
 		}
 		hints[focusStack] = strings.Join(append(keys, "esc close", "tab panel", "? keys", "q quit"), " · ")
