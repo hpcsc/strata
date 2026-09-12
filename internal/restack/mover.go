@@ -143,7 +143,7 @@ func (m *Mover) moveInWorktree(ctx context.Context, b stack.Branch, newTip strin
 		return "", err
 	}
 	return fmt.Sprintf("%s did not move in %s (%v). To finish the move, run: git -C %s reset --keep %s",
-		b.Name, b.Worktree, resetErr, b.Worktree, ref), nil
+		b.Name, b.Worktree, resetErr, shellQuote(b.Worktree), shellQuote(ref)), nil
 }
 
 type Result struct {

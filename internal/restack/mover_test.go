@@ -5,6 +5,7 @@ package restack_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -527,15 +528,16 @@ func TestMover(t *testing.T) {
 				require.Equal(t, "shop\n\nmine\n", worktree.Read("README.md"))
 			})
 
-			t.Run("a move that fails in a worktree keeps the new tip in a ref, and the reason gives the command that finishes it", func(t *testing.T) {
+			t.Run("a move that fails in a worktree keeps the new tip in a ref, and the reason gives a shell command that finishes it", func(t *testing.T) {
 				repo := gittest.New(t)
-				repo.SwitchNew("events")
-				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.SwitchNew("fix(ui);x")
+				repo.Commit("ui.go", "package ui\n", "Fix the UI")
 				repo.Switch("main")
-				worktree := repo.Worktree("events")
+				worktree := repo.Worktree("fix(ui);x")
 				repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
-				eventsBefore := commit(t, repo, "events")
+				before := commit(t, repo, "fix(ui);x")
 				p := plan(t, repo)
+				newTip := p.Outcomes["fix(ui);x"].NewTip
 				lock := filepath.Join(strings.TrimSpace(worktree.Git("rev-parse", "--absolute-git-dir")), "index.lock")
 				require.NoError(t, os.WriteFile(lock, nil, 0o644))
 
@@ -543,14 +545,15 @@ func TestMover(t *testing.T) {
 
 				require.Equal(t, 0, result.Moved)
 				require.Len(t, result.Stayed, 1)
-				require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "refs/strata/sync/events"))
-				require.Equal(t, eventsBefore, commit(t, repo, "events"))
-				finish := "git -C " + p.Outcomes["events"].Worktree + " reset --keep refs/strata/sync/events"
-				require.Contains(t, result.Stayed[0].Reason, finish)
+				require.Equal(t, newTip, commit(t, repo, "refs/strata/sync/fix(ui);x"))
+				require.Equal(t, before, commit(t, repo, "fix(ui);x"))
+				_, finish, found := strings.Cut(result.Stayed[0].Reason, "To finish the move, run: ")
+				require.True(t, found, result.Stayed[0].Reason)
 
 				require.NoError(t, os.Remove(lock))
-				worktree.Git(strings.Fields(finish)[1:]...)
-				require.Equal(t, p.Outcomes["events"].NewTip, commit(t, repo, "events"))
+				out, err := exec.Command("sh", "-c", finish).CombinedOutput()
+				require.NoError(t, err, "%s: %s", finish, out)
+				require.Equal(t, newTip, commit(t, repo, "fix(ui);x"))
 			})
 		})
 	})
