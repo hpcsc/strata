@@ -11,8 +11,9 @@ import (
 )
 
 type Repo struct {
-	t   testing.TB
-	Dir string
+	t      testing.TB
+	Dir    string
+	origin string
 }
 
 func New(t testing.TB) *Repo {
@@ -22,7 +23,7 @@ func New(t testing.TB) *Repo {
 	dir := filepath.Join(root, "repo")
 	run(t, root, "init", "-q", "--bare", "-b", "main", origin)
 	run(t, root, "clone", "-q", origin, dir)
-	r := &Repo{t: t, Dir: dir}
+	r := &Repo{t: t, Dir: dir, origin: origin}
 	r.Commit("README.md", "shop\n", "Start the shop")
 	r.Git("push", "-q", "origin", "main")
 	r.Git("remote", "set-head", "origin", "-a")
@@ -39,6 +40,15 @@ func (r *Repo) Commit(path, content, message string) {
 	r.Write(path, content)
 	r.Git("add", "-A")
 	r.Git("commit", "-q", "-m", message)
+}
+
+func (r *Repo) CommitOnOrigin(path, content, message string) {
+	r.t.Helper()
+	dir := filepath.Join(r.t.TempDir(), "teammate")
+	run(r.t, filepath.Dir(dir), "clone", "-q", r.origin, dir)
+	teammate := &Repo{t: r.t, Dir: dir, origin: r.origin}
+	teammate.Commit(path, content, message)
+	teammate.Git("push", "-q", "origin", "main")
 }
 
 func (r *Repo) Write(path, content string) {

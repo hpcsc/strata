@@ -150,12 +150,23 @@ sequenceDiagram
 Each update test runs a copy of strata in its own folder. The update replaces that copy, so the other
 tests keep the original binary.
 
+## The sync tests
+
+The sync tests need two more things from the fixture repository:
+
+- **A new trunk:** `repo.commitOnOrigin(path, content, message)` makes a commit on `main` in a second clone
+  and pushes it. The repository of the test gets the commit only when strata fetches.
+- **An old git:** `pathWithOldGit()` returns a `PATH` with a folder first. That folder holds a `git` script
+  that prints `git version 2.43.0` for `git version` and runs the real git for all other commands. A test
+  gives it to strata as `runStrata(dir, args, { PATH: pathWithOldGit() })`, and strata then hides
+  `strata sync`.
+
 ## Where the tests run
 
 | Command | Where | What it needs |
 | --- | --- | --- |
 | `task test:e2e` | Docker | Docker. CI runs this command. |
-| `task test:e2e:local` | This machine | Node, and git 2.41 or later |
+| `task test:e2e:local` | This machine | Node, and git 2.44 or later, because the sync tests run `git replay` |
 
 Both commands build strata with the tag in `E2E_TAG` in `Taskfile.yml`, which is `v0.1.0`. They set two
 environment variables for the tests: `EXECUTABLE`, the path of strata, and `BUILD_TAG`, the tag. The
@@ -175,8 +186,9 @@ flowchart LR
     BIN --> RUN
 ```
 
-The second stage uses Debian trixie because strata needs git 2.41 or later, and Debian bookworm has git
-2.39. `python3`, `make` and `g++` let npm build node-pty when no prebuilt node-pty fits the platform.
+The second stage uses Debian trixie, which has git 2.47. strata needs git 2.41 or later, `strata sync`
+needs git 2.44 or later, and Debian bookworm has git 2.39. `python3`, `make` and `g++` let npm build
+node-pty when no prebuilt node-pty fits the platform.
 
 In GitHub Actions, the `e2e` job in `.github/workflows/ci.yml` runs `task test:e2e` on `ubuntu-latest`,
 which has Docker. The release workflow calls the CI workflow, so a release waits for these tests too.

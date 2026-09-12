@@ -1,0 +1,320 @@
+{
+  "story": "strata sync: fetch the trunk and move each stack of local branches onto it",
+  "tasks_file": "tasks/stack-sync.md",
+  "tasks": [
+    {
+      "n": 1,
+      "done": true,
+      "title": "Plan a sync with `strata sync --dry-run` behind the git version gate",
+      "language": "Go",
+      "testable": true,
+      "certainty": "medium",
+      "blast_radius": "low",
+      "patterns_to_follow": [
+        "internal/version/version.go:11-54",
+        "internal/version/version_test.go:1-56",
+        "cmd/strata/main.go:39-75",
+        "cmd/strata/main.go:64-72",
+        "cmd/strata/main.go:172-195",
+        "internal/stack/reader.go:15-18",
+        "internal/stack/reader.go:100-119",
+        "internal/stack/reader_test.go:15-37",
+        "internal/gittest/repo.go:18-30",
+        "e2e/tests/cli.test.ts:4-23",
+        "e2e/testUtils.ts:155-172"
+      ],
+      "depends_on": [],
+      "affected_files": [
+        "internal/git/version.go",
+        "internal/git/version_test.go",
+        "internal/git/repo.go",
+        "internal/restack/",
+        "internal/stack/tree.go",
+        "internal/stack/reader.go",
+        "internal/stack/reader_test.go",
+        "internal/gittest/repo.go",
+        "cmd/strata/main.go",
+        "e2e/testUtils.ts",
+        "e2e/tests/",
+        "docs/e2e-tests.md"
+      ]
+    },
+    {
+      "n": 2,
+      "done": false,
+      "title": "Find the merged branches in the plan",
+      "language": "Go",
+      "testable": true,
+      "certainty": "medium",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/stack/reader.go:100-119",
+        "internal/stack/reader_test.go:123-136",
+        "internal/gittest/repo.go:61-67",
+        "task:1"
+      ],
+      "depends_on": [
+        1
+      ],
+      "affected_files": [
+        "internal/stack/tree.go",
+        "internal/stack/reader.go",
+        "internal/stack/reader_test.go",
+        "internal/restack/",
+        "internal/gittest/repo.go",
+        "cmd/strata/main.go"
+      ]
+    },
+    {
+      "n": 3,
+      "done": false,
+      "title": "Replay each branch in memory and keep a stack whole when one branch stays",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "low",
+      "patterns_to_follow": [
+        "internal/stack/graph.go:64-76",
+        "internal/git/repo.go:32-46",
+        "internal/stack/reader_test.go:15-37",
+        "task:2"
+      ],
+      "depends_on": [
+        2
+      ],
+      "affected_files": [
+        "internal/stack/tree.go",
+        "internal/stack/graph.go",
+        "internal/stack/reader.go",
+        "internal/restack/",
+        "internal/gittest/repo.go",
+        "e2e/testUtils.ts",
+        "cmd/strata/main.go"
+      ]
+    },
+    {
+      "n": 4,
+      "done": false,
+      "title": "Keep a stack when a worktree rebases or changes its branch",
+      "language": "Go",
+      "testable": true,
+      "certainty": "medium",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/stack/reader.go:208-225",
+        "internal/stack/reader.go:41-45",
+        "internal/diff/loader.go:28-46",
+        "task:3"
+      ],
+      "depends_on": [
+        3
+      ],
+      "affected_files": [
+        "internal/restack/",
+        "internal/gittest/repo.go",
+        "cmd/strata/main.go"
+      ]
+    },
+    {
+      "n": 5,
+      "done": false,
+      "title": "Move the stacks that no worktree holds with `strata sync`",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/git/repo.go:21-53",
+        "internal/git/repo.go:55-70",
+        "cmd/strata/main.go:64-72",
+        "task:4"
+      ],
+      "depends_on": [
+        4
+      ],
+      "affected_files": [
+        "internal/git/repo.go",
+        "internal/restack/",
+        "cmd/strata/main.go"
+      ]
+    },
+    {
+      "n": 6,
+      "done": false,
+      "title": "Move checked-out branches in their worktrees",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/git/repo.go:17-19",
+        "internal/gittest/repo.go:61-67",
+        "task:5"
+      ],
+      "depends_on": [
+        5
+      ],
+      "affected_files": [
+        "internal/restack/",
+        "internal/gittest/repo.go",
+        "cmd/strata/main.go"
+      ]
+    },
+    {
+      "n": 7,
+      "done": false,
+      "title": "Sign the moved commits with a sync rebase",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "cmd/strata/main.go:108-115",
+        "internal/viewed/set.go:52-73",
+        "task:6"
+      ],
+      "depends_on": [
+        6
+      ],
+      "affected_files": [
+        "internal/restack/",
+        "internal/git/repo.go",
+        "internal/gittest/repo.go"
+      ]
+    },
+    {
+      "n": 8,
+      "done": false,
+      "title": "Show the plan in the Stack panel with `S`",
+      "language": "Go",
+      "testable": true,
+      "certainty": "medium",
+      "blast_radius": "low",
+      "patterns_to_follow": [
+        "internal/ui/sources.go:11-36",
+        "internal/ui/model.go:355-361",
+        "internal/ui/model.go:77-87",
+        "internal/ui/model.go:571-589",
+        "internal/ui/model.go:605-636",
+        "internal/ui/stackpanel.go:158-203",
+        "internal/ui/model_test.go:20-72",
+        "internal/ui/model_test.go:144-186",
+        "e2e/testUtils.ts:134-147",
+        "e2e/tests/screen.test.ts:5-13"
+      ],
+      "depends_on": [
+        4
+      ],
+      "affected_files": [
+        "internal/ui/sources.go",
+        "internal/ui/model.go",
+        "internal/ui/stackpanel.go",
+        "internal/ui/model_test.go",
+        "internal/git/repo.go",
+        "internal/restack/",
+        "cmd/strata/main.go",
+        "e2e/testUtils.ts",
+        "e2e/tests/",
+        "docs/e2e-tests.md"
+      ]
+    },
+    {
+      "n": 9,
+      "done": false,
+      "title": "Move the stacks from the plan with `enter`",
+      "language": "Go",
+      "testable": true,
+      "certainty": "high",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/ui/model.go:355-361",
+        "internal/ui/model.go:77-87",
+        "internal/ui/model_test.go:144-186",
+        "task:8"
+      ],
+      "depends_on": [
+        7,
+        8
+      ],
+      "affected_files": [
+        "internal/ui/model.go",
+        "internal/ui/sources.go",
+        "internal/ui/model_test.go",
+        "cmd/strata/main.go",
+        "e2e/tests/"
+      ]
+    },
+    {
+      "n": 10,
+      "done": false,
+      "title": "Resolve a conflict with `strata sync --resolve`",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/viewed/set.go:21-36",
+        "internal/viewed/set.go:52-73",
+        "task:7"
+      ],
+      "depends_on": [
+        7
+      ],
+      "affected_files": [
+        "internal/restack/",
+        "cmd/strata/main.go",
+        "internal/gittest/repo.go"
+      ]
+    },
+    {
+      "n": 11,
+      "done": false,
+      "title": "Resolve a conflict from the terminal UI with `c`",
+      "language": "Go",
+      "testable": true,
+      "certainty": "low",
+      "blast_radius": "high",
+      "patterns_to_follow": [
+        "internal/ui/model.go:355-361",
+        "internal/ui/sources.go:11-36",
+        "e2e/tests/screen.test.ts:93-109",
+        "task:9",
+        "task:10"
+      ],
+      "depends_on": [
+        9,
+        10
+      ],
+      "affected_files": [
+        "internal/ui/model.go",
+        "internal/ui/sources.go",
+        "internal/ui/model_test.go",
+        "cmd/strata/main.go",
+        "e2e/testUtils.ts",
+        "e2e/tests/"
+      ]
+    },
+    {
+      "n": 12,
+      "done": false,
+      "title": "Document `strata sync` for users",
+      "language": "Markdown",
+      "testable": false,
+      "certainty": "high",
+      "blast_radius": "low",
+      "patterns_to_follow": [
+        "docs/stack.md:1-45",
+        "README.md:32-45",
+        "README.md:73-98"
+      ],
+      "depends_on": [
+        11
+      ],
+      "affected_files": [
+        "README.md",
+        "docs/sync.md",
+        "docs/stack.md"
+      ]
+    }
+  ]
+}

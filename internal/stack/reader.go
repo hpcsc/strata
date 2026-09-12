@@ -73,7 +73,7 @@ func (r *Reader) Read(ctx context.Context) (Tree, error) {
 	})
 	for i := range branches {
 		grp.Go(func() error {
-			return r.fillDiffStat(gctx, &branches[i], tips)
+			return r.fillDiffStat(gctx, &branches[i])
 		})
 	}
 	if err := grp.Wait(); err != nil {
@@ -169,7 +169,7 @@ func (r *Reader) place(g *graph, tips []tip, parents map[string]link) []Branch {
 	branches := make([]Branch, len(placements))
 	for i, p := range placements {
 		t, parent := byName[p.name], parents[p.name]
-		b := Branch{Name: p.name, Level: p.level}
+		b := Branch{Name: p.name, Tip: t.commit, Level: p.level}
 		if parent.parent == "" {
 			b.Parent, b.Behind, b.Commits = r.trunk, t.behindTrunk, g.count(t.commit)
 			b.Base, _ = g.forkPoint(t.commit)
@@ -183,21 +183,15 @@ func (r *Reader) place(g *graph, tips []tip, parents map[string]link) []Branch {
 	return branches
 }
 
-func (r *Reader) fillDiffStat(ctx context.Context, b *Branch, tips []tip) error {
-	commit := b.Name
-	for _, t := range tips {
-		if t.name == b.Name {
-			commit = t.commit
-		}
-	}
+func (r *Reader) fillDiffStat(ctx context.Context, b *Branch) error {
 	if b.Base == "" {
-		out, err := r.git.Run(ctx, "merge-base", r.trunk, commit)
+		out, err := r.git.Run(ctx, "merge-base", r.trunk, b.Tip)
 		if err != nil {
 			return fmt.Errorf("find where %s leaves %s: %w", b.Name, r.trunk, err)
 		}
 		b.Base = strings.TrimSpace(out)
 	}
-	out, err := r.git.Run(ctx, "diff", "--no-color", "--no-ext-diff", "--shortstat", "-M", b.Base, commit)
+	out, err := r.git.Run(ctx, "diff", "--no-color", "--no-ext-diff", "--shortstat", "-M", b.Base, b.Tip)
 	if err != nil {
 		return err
 	}

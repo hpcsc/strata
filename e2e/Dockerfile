@@ -9,7 +9,7 @@ ARG BUILD_TAG=v0.1.0
 RUN CGO_ENABLED=0 go build -ldflags "-X github.com/hpcsc/strata/internal/version.releaseTag=${BUILD_TAG}" \
     -o /strata ./cmd/strata
 
-# strata needs git 2.41 or later; Debian trixie ships 2.47, bookworm only 2.39
+# strata needs git 2.41 or later and strata sync 2.44; Debian trixie ships 2.47, bookworm only 2.39
 FROM node:24-trixie-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git python3 make g++ \

@@ -45,6 +45,24 @@ func (r *Repo) Check(ctx context.Context, args ...string) (bool, error) {
 	return false, &Error{Args: args, Stderr: strings.TrimSpace(stderr.String()), Err: err}
 }
 
+func (r *Repo) Version(ctx context.Context) (Version, error) {
+	out, err := r.Run(ctx, "version")
+	if err != nil {
+		return Version{}, err
+	}
+	return ParseVersion(out)
+}
+
+func (r *Repo) Fetch(ctx context.Context, remote string) error {
+	args := []string{"fetch", "--prune", remote}
+	cmd := r.command(ctx, args)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return &Error{Args: args, Err: err}
+	}
+	return nil
+}
+
 func (r *Repo) command(ctx context.Context, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.dir

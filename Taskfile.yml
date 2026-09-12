@@ -32,7 +32,7 @@ tasks:
       - docker container run --rm strata-e2e
 
   test:e2e:local:
-    desc: Run the end-to-end tests on this machine without Docker (needs node and git 2.41 or later)
+    desc: Run the end-to-end tests on this machine without Docker (needs node and git 2.44 or later)
     dir: e2e
     cmds:
       - CGO_ENABLED=0 go build -ldflags "-X github.com/hpcsc/strata/internal/version.releaseTag={{.E2E_TAG}}" -o ../bin/strata-e2e ../cmd/strata

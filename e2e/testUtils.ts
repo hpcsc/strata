@@ -47,13 +47,16 @@ export function scratchDir(): string {
 }
 
 export class Repo {
-  private constructor(readonly dir: string) {}
+  private constructor(
+    readonly dir: string,
+    private readonly origin: string,
+  ) {}
 
   static create(): Repo {
     const root = scratchDir()
     git(root, 'init', '-q', '--bare', '-b', 'main', 'origin.git')
     git(root, 'clone', '-q', 'origin.git', 'repo')
-    const repo = new Repo(join(root, 'repo'))
+    const repo = new Repo(join(root, 'repo'), join(root, 'origin.git'))
     repo.commit('README.md', '# shop\n', 'Start the shop')
     repo.git('push', '-q', 'origin', 'main')
     repo.git('remote', 'set-head', 'origin', '-a')
@@ -82,6 +85,27 @@ export class Repo {
   switch(branch: string): void {
     this.git('switch', '-q', branch)
   }
+
+  commitOnOrigin(path: string, content: string, message: string): void {
+    const dir = join(scratchDir(), 'teammate')
+    git(dirname(dir), 'clone', '-q', this.origin, dir)
+    const teammate = new Repo(dir, this.origin)
+    teammate.commit(path, content, message)
+    teammate.git('push', '-q', 'origin', 'main')
+  }
+}
+
+// pathWithOldGit returns a PATH whose git prints git 2.43.0 for `git version`
+// and runs the real git for all other commands.
+export function pathWithOldGit(): string {
+  const dir = scratchDir()
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim()
+  writeFileSync(
+    join(dir, 'git'),
+    `#!/bin/sh\nif [ "$1" = "version" ]; then\n  echo "git version 2.43.0"\n  exit 0\nfi\nexec "${realGit}" "$@"\n`,
+    { mode: 0o755 },
+  )
+  return `${dir}:${process.env.PATH}`
 }
 
 const handler = `package orders

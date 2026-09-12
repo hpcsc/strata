@@ -4,6 +4,7 @@ import "strings"
 
 type Branch struct {
 	Name string
+	Tip  string
 	// Parent is the branch this one sits on, or the trunk.
 	Parent string
 	// Base is the commit where this branch's own changes start.

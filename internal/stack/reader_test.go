@@ -4,6 +4,7 @@ package stack_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hpcsc/strata/internal/git"
@@ -183,6 +184,16 @@ func TestReader(t *testing.T) {
 			require.Equal(t, 2, child.Files)
 			require.Equal(t, 3, child.Insertions)
 			require.Equal(t, 1, child.Deletions)
+		})
+
+		t.Run("gives the commit at the tip of each branch", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+
+			events := branch(t, read(t, repo), "events")
+
+			require.Equal(t, strings.TrimSpace(repo.Git("rev-parse", "events")), events.Tip)
 		})
 
 		t.Run("names the checked-out branch as current", func(t *testing.T) {

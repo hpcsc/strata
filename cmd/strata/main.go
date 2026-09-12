@@ -17,6 +17,7 @@ import (
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/release"
+	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
 	"github.com/hpcsc/strata/internal/ui"
@@ -30,13 +31,14 @@ const releaseRepository = "hpcsc/strata"
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if err := newCommand().Run(ctx, os.Args); err != nil {
+	syncErr := restack.Available(git.New(".").Version(ctx))
+	if err := newCommand(syncErr).Run(ctx, os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, "strata:", err)
 		os.Exit(1)
 	}
 }
 
-func newCommand() *cli.Command {
+func newCommand(syncErr error) *cli.Command {
 	return &cli.Command{
 		Name:      "strata",
 		Version:   version.Current(),
@@ -70,27 +72,32 @@ func newCommand() *cli.Command {
 				},
 				Action: update,
 			},
+			{
+				Name:      "sync",
+				Usage:     "fetch the trunk and move each stack onto it",
+				ArgsUsage: "[pattern...]",
+				Hidden:    syncErr != nil,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "dry-run", Usage: "print the plan and change nothing"},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if syncErr != nil {
+						return syncErr
+					}
+					return syncStacks(ctx, cmd)
+				},
+			},
 		},
 	}
 }
 
 func run(ctx context.Context, cmd *cli.Command) error {
 	repo := git.New(".")
-	trunk := cmd.String("trunk")
-	if trunk == "" {
-		found, err := stack.FindTrunk(ctx, repo)
-		if err != nil {
-			return err
-		}
-		trunk = found
+	trunk, err := trunkOf(ctx, cmd, repo)
+	if err != nil {
+		return err
 	}
-	patterns := cmd.Args().Slice()
-	if len(patterns) == 0 {
-		patterns = []string{"refs/heads/"}
-		if cmd.Bool("remote") {
-			patterns = []string{"refs/remotes/origin/"}
-		}
-	}
+	patterns := patternsOf(cmd)
 
 	reader := stack.NewReader(repo, trunk, patterns)
 	tree, err := reader.Read(ctx)
@@ -167,6 +174,57 @@ func update(ctx context.Context, cmd *cli.Command) error {
 	}
 	_, err = fmt.Fprintf(out, "Updated strata from %s to %s at %s.\n", check.Current, check.Latest.Tag, executable)
 	return err
+}
+
+func syncStacks(ctx context.Context, cmd *cli.Command) error {
+	if cmd.Bool("remote") {
+		return restack.ErrRemote
+	}
+	if !cmd.Bool("dry-run") {
+		return errors.New("strata sync cannot move branches yet: run strata sync --dry-run to print the plan")
+	}
+	repo := git.New(".")
+	trunk, err := trunkOf(ctx, cmd, repo)
+	if err != nil {
+		return err
+	}
+	plan, err := restack.NewPlanner(repo, repo.Fetch, trunk, patternsOf(cmd)).Plan(ctx)
+	if err != nil {
+		return err
+	}
+	printPlan(cmd.Root().Writer, plan)
+	return nil
+}
+
+func trunkOf(ctx context.Context, cmd *cli.Command, repo *git.Repo) (string, error) {
+	if trunk := cmd.String("trunk"); trunk != "" {
+		return trunk, nil
+	}
+	return stack.FindTrunk(ctx, repo)
+}
+
+func patternsOf(cmd *cli.Command) []string {
+	if patterns := cmd.Args().Slice(); len(patterns) > 0 {
+		return patterns
+	}
+	if cmd.Bool("remote") {
+		return []string{"refs/remotes/origin/"}
+	}
+	return []string{"refs/heads/"}
+}
+
+func printPlan(w io.Writer, plan restack.Plan) {
+	tree := plan.Tree
+	connectors := tree.Connectors()
+	width := 0
+	for i, b := range tree.Branches {
+		width = max(width, len([]rune(connectors[i]))+len(b.Name))
+	}
+	fmt.Fprintln(w, tree.Trunk+"  "+plural(plan.NewCommits, "new commit"))
+	for i, b := range tree.Branches {
+		name := connectors[i] + b.Name
+		fmt.Fprintln(w, name+strings.Repeat(" ", width-len([]rune(name)))+"  "+plan.Outcomes[b.Name].Text())
+	}
 }
 
 func printTree(w io.Writer, tree stack.Tree) {
