@@ -177,6 +177,23 @@ describe('strata sync --resolve', () => {
     expect(repo.git('status', '--porcelain')).toBe('')
   })
 
+  it('after git rebase --abort, strata sync says so and removes the sync worktree and its refs', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('orders/handler.go', 'package orders\n\ntype Handler struct{}\n', 'Start the handler')
+    const worktreesBefore = repo.git('worktree', 'list', '--porcelain')
+    const started = await runStrata(repo.dir, ['sync', '--resolve', 'orders-handler'])
+    const worktree = started.stdout.match(/stopped at the conflict, in (.+)\.\n/)?.[1]
+    expect(worktree).toBeDefined()
+    expect(repo.git('for-each-ref', 'refs/strata/sync/orders-events')).not.toBe('')
+    repo.worktree(worktree as string).git('rebase', '--abort')
+
+    const result = await runStrata(repo.dir, ['sync'])
+
+    expect(result.stdout).toContain('You aborted the sync rebase for the stack of orders-events, and no branch of it moved.')
+    expect(repo.git('worktree', 'list', '--porcelain')).toBe(worktreesBefore)
+    expect(repo.git('for-each-ref', 'refs/strata/')).toBe('')
+  })
+
   it('does not go with --dry-run, and starts no sync rebase', async () => {
     const repo = ordersRepo()
     repo.commitOnOrigin('orders/events.go', 'package orders\n\ntype OrderShipped struct{}\n', 'Ship orders')

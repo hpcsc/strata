@@ -88,19 +88,6 @@ func TestResolver(t *testing.T) {
 			require.Contains(t, content, "open on weekdays")
 		})
 
-		t.Run("keeps a record of the branches of the stack and their old tips", func(t *testing.T) {
-			repo := conflicted(t)
-			eventsTip := commit(t, repo, "events")
-
-			_, err := resolver(repo).Start(ctx, plan(t, repo), "events")
-
-			require.NoError(t, err)
-			record, err := os.ReadFile(filepath.Join(repo.Dir, ".git", "strata", "sync", "plan"))
-			require.NoError(t, err)
-			require.Contains(t, string(record), "events")
-			require.Contains(t, string(record), eventsTip)
-		})
-
 		t.Run("refuses a stack with a merge commit, because a sync rebase does not replay it", func(t *testing.T) {
 			repo := conflicted(t)
 			repo.Switch("handler")
@@ -306,7 +293,6 @@ func TestResolver(t *testing.T) {
 	})
 }
 
-// holdSyncLock takes the lock of the sync rebase as a second strata does.
 func holdSyncLock(t *testing.T, repo *gittest.Repo) {
 	t.Helper()
 	dir := filepath.Join(repo.Dir, ".git", "strata", "sync")

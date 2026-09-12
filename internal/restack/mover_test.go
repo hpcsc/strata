@@ -124,25 +124,6 @@ func TestMover(t *testing.T) {
 			require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, repo, "handler"))
 		})
 
-		t.Run("keeps a merged branch that a worktree has checked out, and moves its children", func(t *testing.T) {
-			repo := gittest.New(t)
-			repo.SwitchNew("events")
-			repo.Commit("events.go", "package orders\n", "Name the events")
-			repo.SwitchNew("handler")
-			repo.Commit("handler.go", "package orders\n", "Add the handler")
-			repo.Switch("main")
-			repo.Worktree("events")
-			repo.SquashMergeOnOrigin("events")
-			eventsBefore := commit(t, repo, "events")
-			p := plan(t, repo)
-
-			result := move(t, repo, p)
-
-			require.Equal(t, restack.Result{Moved: 1}, result)
-			require.Equal(t, eventsBefore, commit(t, repo, "events"))
-			require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, repo, "handler"))
-		})
-
 		t.Run("a branch that changed after the plan makes its whole stack stay", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")
@@ -205,6 +186,27 @@ func TestMover(t *testing.T) {
 			require.Equal(t, restack.Result{Moved: 1}, result)
 			require.Equal(t, p.Outcomes["billing"].NewTip, commit(t, repo, "billing"))
 			require.Equal(t, eventsBefore, commit(t, repo, "events"))
+		})
+
+		t.Run("moves nothing while a sync rebase waits, and keeps that rebase", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			g := git.New(repo.Dir)
+			waiting, err := restack.NewResolver(g, restack.NewMover(g)).Start(context.Background(), plan(t, repo), "events")
+			require.NoError(t, err)
+			billingBefore := commit(t, repo, "billing")
+
+			_, err = restack.NewMover(g).Move(context.Background(), plan(t, repo))
+
+			require.ErrorContains(t, err, "git rebase --continue")
+			require.Equal(t, billingBefore, commit(t, repo, "billing"))
+			require.Equal(t, "UU README.md\n", repo.In(waiting.Worktree).Git("status", "--porcelain"))
 		})
 
 		t.Run("signed commits", func(t *testing.T) {
@@ -413,28 +415,6 @@ func TestMover(t *testing.T) {
 				require.Empty(t, repo.Git("for-each-ref", "refs/strata/"))
 			})
 
-			t.Run("moves nothing while a sync rebase waits, and keeps that rebase", func(t *testing.T) {
-				repo := gittest.New(t)
-				repo.SwitchNew("billing")
-				repo.Commit("billing.go", "package billing\n", "Add billing")
-				repo.Switch("main")
-				repo.SwitchNew("events")
-				repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
-				repo.Switch("main")
-				repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
-				repo.SignWithFakeGPG()
-				g := git.New(repo.Dir)
-				waiting, err := restack.NewResolver(g, restack.NewMover(g)).Start(context.Background(), plan(t, repo), "events")
-				require.NoError(t, err)
-				billingBefore := commit(t, repo, "billing")
-
-				_, err = restack.NewMover(g).Move(context.Background(), plan(t, repo))
-
-				require.ErrorContains(t, err, "git rebase --continue")
-				require.Equal(t, billingBefore, commit(t, repo, "billing"))
-				require.Equal(t, "UU README.md\n", repo.In(waiting.Worktree).Git("status", "--porcelain"))
-			})
-
 			t.Run("leaves no sync worktree and no ref in refs/strata/sync/", func(t *testing.T) {
 				repo := gittest.New(t)
 				repo.SwitchNew("events")
@@ -539,6 +519,25 @@ func TestMover(t *testing.T) {
 				require.Equal(t, restack.Result{Moved: 1}, result)
 				require.Equal(t, p.Outcomes["events"].NewTip, commit(t, worktree, "HEAD"))
 				require.Empty(t, worktree.Git("status", "--porcelain"))
+			})
+
+			t.Run("keeps a merged branch that a worktree has checked out, and moves its children", func(t *testing.T) {
+				repo := gittest.New(t)
+				repo.SwitchNew("events")
+				repo.Commit("events.go", "package orders\n", "Name the events")
+				repo.SwitchNew("handler")
+				repo.Commit("handler.go", "package orders\n", "Add the handler")
+				repo.Switch("main")
+				repo.Worktree("events")
+				repo.SquashMergeOnOrigin("events")
+				eventsBefore := commit(t, repo, "events")
+				p := plan(t, repo)
+
+				result := move(t, repo, p)
+
+				require.Equal(t, restack.Result{Moved: 1}, result)
+				require.Equal(t, eventsBefore, commit(t, repo, "events"))
+				require.Equal(t, p.Outcomes["handler"].NewTip, commit(t, repo, "handler"))
 			})
 
 			t.Run("keeps a merged branch that a worktree checked out after the plan, and moves its children", func(t *testing.T) {
