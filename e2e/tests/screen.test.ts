@@ -17,6 +17,7 @@ describe('the strata screen', () => {
     await strata.waitForText('Branch · orders-handler')
 
     await strata.press('enter')
+    await strata.waitForText('orders/handler.go · 1/2')
     await strata.press('j')
 
     const screen = await strata.waitForText('func TestHandler')
