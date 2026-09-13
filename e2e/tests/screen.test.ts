@@ -41,6 +41,7 @@ describe('the strata screen', () => {
     const strata = await openStrata(ordersRepo().dir)
     await strata.waitForText('Branch · orders-handler')
     await strata.press('enter')
+    await strata.waitForText('orders/handler.go · 1/2')
     await strata.press(']')
     const sideBySide = await strata.waitForText('order.Reason = "requested"')
     expect(sideBySide).not.toContain('│+ ')
