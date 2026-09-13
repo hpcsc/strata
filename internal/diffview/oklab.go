@@ -25,6 +25,14 @@ func (c rgb) dark() bool {
 	return c.lab().l < 0.5
 }
 
+func (c oklab) chroma() float64 {
+	return math.Hypot(c.a, c.b)
+}
+
+func (c oklab) distance(o oklab) float64 {
+	return math.Sqrt((c.l-o.l)*(c.l-o.l) + (c.a-o.a)*(c.a-o.a) + (c.b-o.b)*(c.b-o.b))
+}
+
 func (c rgb) lab() oklab {
 	r, g, b := linear(c.r), linear(c.g), linear(c.b)
 	l := math.Cbrt(0.4122214708*r + 0.5363325363*g + 0.0514459929*b)

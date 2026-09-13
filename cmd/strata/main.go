@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/progress"
@@ -139,8 +140,18 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		Viewed:      marks,
 		Sync:        sync,
 	})
-	_, err = tea.NewProgram(model, tea.WithContext(ctx)).Run()
+	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile())).Run()
 	return err
+}
+
+// colorprofile.Detect trusts COLORTERM before it asks tmux, but tmux shows
+// only 256 colours when its terminal has no RGB feature.
+func colorProfile() colorprofile.Profile {
+	profile := colorprofile.Detect(os.Stdout, os.Environ())
+	if inTmux := colorprofile.Tmux(os.Environ()); inTmux != colorprofile.NoTTY {
+		profile = min(profile, inTmux)
+	}
+	return profile
 }
 
 func update(ctx context.Context, cmd *cli.Command) error {

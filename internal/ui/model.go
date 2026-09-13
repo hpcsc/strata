@@ -103,6 +103,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+	case tea.ColorProfileMsg:
+		m.diff.setColorProfile(msg.Profile, m.split)
+		return m, nil
 	case treeLoaded:
 		if msg.err != nil {
 			m.status = msg.err.Error()

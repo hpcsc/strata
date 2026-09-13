@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/hpcsc/strata/internal/diffview"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/syntax"
@@ -20,6 +21,7 @@ type diffPanel struct {
 	height    int
 	find      search.Query
 	theme     syntax.Theme
+	profile   colorprofile.Profile
 	// match is the index in page.Matches of the match that n and N last
 	// moved to, or -1.
 	match int
@@ -47,15 +49,20 @@ func (p *diffPanel) setSize(width, height int, split bool) {
 	p.render(split)
 }
 
+func (p *diffPanel) setColorProfile(profile colorprofile.Profile, split bool) {
+	p.profile = profile
+	p.render(split)
+}
+
 func (p *diffPanel) render(split bool) {
 	if !p.hasSource || p.width <= 0 {
 		return
 	}
-	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%s", p.key, p.width, split, p.find)
+	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%s\x00%d", p.key, p.width, split, p.find, p.profile)
 	if pageKey == p.pageKey {
 		return
 	}
-	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: split, Find: p.find, Theme: p.theme}), pageKey
+	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: split, Find: p.find, Theme: p.theme, ColorProfile: p.profile}), pageKey
 	p.scroll(0)
 }
 

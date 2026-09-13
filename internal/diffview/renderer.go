@@ -20,14 +20,14 @@ type renderer struct {
 	palette     palette
 }
 
-func newRenderer(src Source, width int, find search.Query, theme syntax.Theme) renderer {
+func newRenderer(src Source, width int, find search.Query, palette palette) renderer {
 	widest := 1
 	for _, h := range src.Patch.Hunks {
 		for _, l := range h.Lines {
 			widest = max(widest, len(strconv.Itoa(max(l.OldNumber, l.NewNumber))))
 		}
 	}
-	return renderer{src: src, width: width, numberWidth: widest, find: find, palette: newPalette(theme)}
+	return renderer{src: src, width: width, numberWidth: widest, find: find, palette: palette}
 }
 
 // unified returns the rows of a hunk, and the index of each row that starts

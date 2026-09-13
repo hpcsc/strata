@@ -4,10 +4,12 @@ package diffview_test
 
 import (
 	"fmt"
+	"image/color"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/diffview"
@@ -74,6 +76,14 @@ func TestRender(t *testing.T) {
 		default:
 			return "none"
 		}
+	}
+	shownIn256 := func(t *testing.T, code string) string {
+		t.Helper()
+		var r, g, b uint8
+		_, err := fmt.Sscanf(code[len("48;2;"):], "%d;%d;%d", &r, &g, &b)
+		require.NoError(t, err)
+		shownR, shownG, shownB, _ := colorprofile.ANSI256.Convert(color.RGBA{R: r, G: g, B: b, A: 255}).RGBA()
+		return fmt.Sprintf("48;2;%d;%d;%d", shownR>>8, shownG>>8, shownB>>8)
 	}
 
 	t.Run("unified", func(t *testing.T) {
@@ -246,6 +256,41 @@ func TestRender(t *testing.T) {
 			require.Equal(t, []string{"red", "green"}, []string{
 				strongestChannel(t, backgroundOf(t, page.Lines[2], "return")),
 				strongestChannel(t, backgroundOf(t, page.Lines[3], "return")),
+			})
+		})
+
+		t.Run("keeps changed lines red and green when a 256-colour terminal rounds them", func(t *testing.T) {
+			theme := syntax.Theme{Background: rgb(46, 52, 64), Inserted: rgb(163, 190, 140), Deleted: rgb(191, 97, 106)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme, ColorProfile: colorprofile.ANSI256})
+
+			require.Equal(t, []string{"red", "green"}, []string{
+				strongestChannel(t, shownIn256(t, backgroundOf(t, page.Lines[2], "return"))),
+				strongestChannel(t, shownIn256(t, backgroundOf(t, page.Lines[3], "return"))),
+			})
+		})
+
+		t.Run("keeps a changed word apart from the rest of its line when a 256-colour terminal rounds them", func(t *testing.T) {
+			theme := syntax.Theme{Background: rgb(30, 30, 46), Inserted: rgb(166, 227, 161), Deleted: rgb(243, 139, 168)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme, ColorProfile: colorprofile.ANSI256})
+
+			added := page.Lines[3]
+			require.NotEqual(t, shownIn256(t, backgroundOf(t, added, "return")), shownIn256(t, backgroundOf(t, added, "quantity")))
+		})
+
+		t.Run("keeps the hunk header and the empty side grey when a 256-colour terminal rounds them", func(t *testing.T) {
+			theme := syntax.Theme{Text: rgb(205, 214, 244), Background: rgb(30, 30, 46)}
+			patch := diff.Patch{File: diff.File{Path: "price.go", Status: diff.Modified}, Hunks: []diff.Hunk{{Lines: []diff.Line{
+				{Kind: diff.Context, Text: "a", OldNumber: 1, NewNumber: 1},
+				{Kind: diff.Addition, Text: "b", NewNumber: 2},
+			}}}}
+
+			page := diffview.Render(diffview.Source{Patch: patch}, diffview.Options{Width: 41, Split: true, Theme: theme, ColorProfile: colorprofile.ANSI256})
+
+			require.Equal(t, []string{"none", "none"}, []string{
+				strongestChannel(t, shownIn256(t, backgroundOf(t, page.Lines[0], "@@"))),
+				strongestChannel(t, shownIn256(t, backgroundOf(t, page.Lines[2], "│"))),
 			})
 		})
 

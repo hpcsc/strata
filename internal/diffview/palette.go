@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/syntax"
 )
@@ -48,7 +49,7 @@ var (
 	wordTint        = tint{lightness: 0.3, chroma: 0.75}
 )
 
-func newPalette(t syntax.Theme) palette {
+func newPalette(t syntax.Theme, profile colorprofile.Profile) palette {
 	background := fromSyntax(t.Background).or(white)
 	ink := fromSyntax(t.Text).or(black)
 	if background.dark() {
@@ -57,7 +58,7 @@ func newPalette(t syntax.Theme) palette {
 	inserted := fromSyntax(t.Inserted).or(defaultInserted)
 	deleted := fromSyntax(t.Deleted).or(defaultDeleted)
 	number := fromSyntax(t.LineNumber).or(blend(ink, background, 0.5))
-	return palette{
+	p := palette{
 		text:           fromSyntax(t.Text),
 		number:         number,
 		separator:      blend(number, background, 0.5),
@@ -72,6 +73,12 @@ func newPalette(t syntax.Theme) palette {
 		note:           fromSyntax(t.Comment),
 		emptySide:      blend(ink, background, 0.04),
 	}
+	if profile == colorprofile.ANSI256 {
+		p.addedLine, p.deletedLine = sameHueIn256(p.addedLine), sameHueIn256(p.deletedLine)
+		p.addedWord, p.deletedWord = sameHueIn256(p.addedWord, p.addedLine), sameHueIn256(p.deletedWord, p.deletedLine)
+		p.hunkBackground, p.emptySide, p.separator = greyIn256(p.hunkBackground), greyIn256(p.emptySide), greyIn256(p.separator)
+	}
+	return p
 }
 
 const reset = "\x1b[0m"

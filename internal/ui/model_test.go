@@ -6,11 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/restack"
@@ -758,6 +760,27 @@ func TestModel(t *testing.T) {
 			view := press(settle(sized, m.Init()), "enter", "s").View().Content
 
 			require.Contains(t, view, "38;2;10;200;30")
+		})
+
+		t.Run("tints the diff with colours of the 256-colour palette when the terminal has only those", func(t *testing.T) {
+			tree, files := stackOf()
+			m := ui.New(context.Background(), tree, ui.Sources{
+				Tree:        memoryTree{tree: tree},
+				Diffs:       memoryDiffs{files: files},
+				Highlighter: plainText{},
+				Viewed:      memoryViewed{},
+			})
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			profiled, _ := settle(sized, m.Init()).Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI256})
+
+			view := press(profiled, "enter").View().Content
+
+			at := strings.Index(view, "content of events.go on events")
+			require.NotEqual(t, -1, at)
+			backgrounds := regexp.MustCompile(`48;2;(\d+);(\d+);(\d+)`).FindAllStringSubmatch(view[:at], -1)
+			require.NotEmpty(t, backgrounds)
+			require.Subset(t, []string{"0", "95", "135", "175", "215", "255"}, backgrounds[len(backgrounds)-1][1:])
 		})
 	})
 

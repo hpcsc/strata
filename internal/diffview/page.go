@@ -1,6 +1,7 @@
 package diffview
 
 import (
+	"github.com/charmbracelet/colorprofile"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/syntax"
@@ -10,8 +11,9 @@ type Options struct {
 	Width int
 	Split bool
 	// Find marks the text that matches it.
-	Find  search.Query
-	Theme syntax.Theme
+	Find         search.Query
+	Theme        syntax.Theme
+	ColorProfile colorprofile.Profile
 }
 
 // Source is a patch with the highlighted text of the file before and after
@@ -35,7 +37,7 @@ type Page struct {
 const minWidth = 24
 
 func Render(src Source, opts Options) Page {
-	r := newRenderer(src, max(opts.Width, minWidth), opts.Find, opts.Theme)
+	r := newRenderer(src, max(opts.Width, minWidth), opts.Find, newPalette(opts.Theme, opts.ColorProfile))
 	if summary := src.Patch.Summary(); summary != "" {
 		return Page{Lines: []string{r.note(summary)}}
 	}
