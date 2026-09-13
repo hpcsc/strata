@@ -447,7 +447,8 @@ func TestModel(t *testing.T) {
 			require.NotContains(t, next, "four.go")
 		})
 
-		t.Run("/ in the diff finds the text, and n moves to the next match", func(t *testing.T) {
+		needles := func(t *testing.T) modelSources {
+			t.Helper()
 			src := nestedFiles(t)
 			var lines []diff.Line
 			for i := 1; i <= 40; i++ {
@@ -458,8 +459,11 @@ func TestModel(t *testing.T) {
 				lines = append(lines, diff.Line{Kind: diff.Addition, Text: text, NewNumber: i})
 			}
 			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: []diff.Hunk{{NewStart: 1, NewLines: 40, Lines: lines}}}}
+			return src
+		}
 
-			found := press(startWith(src), "enter", "enter", "/", "needle", "enter")
+		t.Run("/ in the diff finds the text, and n moves to the next match", func(t *testing.T) {
+			found := press(startWith(needles(t)), "enter", "enter", "/", "needle", "enter")
 
 			require.Contains(t, screen(found), "/needle · 1/2")
 			moved := press(found, "n")
@@ -468,26 +472,34 @@ func TestModel(t *testing.T) {
 			require.NotContains(t, screen(press(moved, "esc")), "/needle")
 		})
 
-		t.Run("while a search is on in the diff, the footer shows the match keys in place of the hunk keys", func(t *testing.T) {
+		t.Run("while a search is on in the diff, the footer shows n for the next match and not for the next hunk", func(t *testing.T) {
 			view := screen(press(startWith(threeHunks(t)), "enter", "enter", "/", "line", "enter"))
 
 			require.Contains(t, view, "n/N match")
-			require.NotContains(t, view, "n/p hunk")
+			require.Contains(t, view, "^d/^u page · p hunk · J/K file")
+		})
+
+		t.Run("while a search is on in the diff, the footer keeps a hunk key that no match action takes", func(t *testing.T) {
+			opts := defaults()
+			require.NoError(t, opts.Keys.Set(keymap.NextMatch, []string{"x"}))
+
+			view := screen(press(startWithOptions(threeHunks(t), opts), "enter", "enter", "/", "line", "enter"))
+
+			require.Contains(t, view, "x/N match")
+			require.Contains(t, view, "n/p hunk")
+		})
+
+		t.Run("while a search is on, a key of keys.search runs ahead of the same key in keys", func(t *testing.T) {
+			opts := defaults()
+			require.NoError(t, opts.Keys.Set(keymap.NextMatch, []string{"s"}))
+
+			view := screen(press(startWithOptions(needles(t), opts), "enter", "enter", "/", "needle", "enter", "s"))
+
+			require.Contains(t, view, "/needle · 2/2")
 		})
 
 		t.Run("N in the diff moves back to the previous match", func(t *testing.T) {
-			src := nestedFiles(t)
-			var lines []diff.Line
-			for i := 1; i <= 40; i++ {
-				text := fmt.Sprintf("line %d", i)
-				if i == 5 || i == 30 {
-					text += " holds the needle"
-				}
-				lines = append(lines, diff.Line{Kind: diff.Addition, Text: text, NewNumber: i})
-			}
-			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: []diff.Hunk{{NewStart: 1, NewLines: 40, Lines: lines}}}}
-
-			back := press(startWith(src), "enter", "enter", "/", "needle", "enter", "n", "N")
+			back := press(startWith(needles(t)), "enter", "enter", "/", "needle", "enter", "n", "N")
 
 			require.Contains(t, screen(back), "/needle · 1/2")
 			require.Contains(t, screen(back), "line 5 holds the needle")
@@ -495,7 +507,7 @@ func TestModel(t *testing.T) {
 	})
 
 	t.Run("sync", func(t *testing.T) {
-		startWithSync := func(sync ui.Syncer) tea.Model {
+		startWithSyncOptions := func(sync ui.Syncer, opts ui.Options) tea.Model {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{
 				Tree:        memoryTree{tree: tree},
@@ -503,10 +515,13 @@ func TestModel(t *testing.T) {
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
 				Sync:        sync,
-			}, defaults())
+			}, opts)
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 			return settle(sized, m.Init())
+		}
+		startWithSync := func(sync ui.Syncer) tea.Model {
+			return startWithSyncOptions(sync, defaults())
 		}
 		planned := func() restack.Plan {
 			tree, _ := stackOf()
@@ -533,6 +548,22 @@ func TestModel(t *testing.T) {
 			require.Regexp(t, `│  └─ handler\s+stays: conflict in order.go`, view)
 			require.Regexp(t, `└─ billing\s+up to date`, view)
 			require.Contains(t, view, "esc close")
+		})
+
+		t.Run("while the plan shows, esc closes it even when the stack has a filter", func(t *testing.T) {
+			view := screen(press(startWithSync(&memorySync{plan: planned()}), "/", "hand", "enter", "S", "esc"))
+
+			require.NotContains(t, view, "sync plan")
+		})
+
+		t.Run("while the plan shows, a key of keys.plan runs ahead of the same key in keys", func(t *testing.T) {
+			opts := defaults()
+			require.NoError(t, opts.Keys.Set(keymap.ClosePlan, []string{"q"}))
+			m := press(startWithSyncOptions(&memorySync{plan: planned()}, opts), "S")
+
+			next, cmd := m.Update(keyPress("q"))
+
+			require.NotContains(t, screen(settle(next, cmd)), "sync plan")
 		})
 
 		t.Run("esc closes the plan, and the Stack panel shows the tree as it was before", func(t *testing.T) {
@@ -678,6 +709,14 @@ func TestModel(t *testing.T) {
 			press(startWithSync(sync), "S", "j", "c")
 
 			require.Equal(t, []string{"handler"}, sync.resolved)
+		})
+
+		t.Run("while the plan shows, c in the files starts no sync rebase", func(t *testing.T) {
+			sync := &memorySync{plan: planned()}
+
+			press(startWithSync(sync), "S", "j", "tab", "c")
+
+			require.Empty(t, sync.resolved)
 		})
 
 		t.Run("c on a stack with no conflict does nothing", func(t *testing.T) {
@@ -873,6 +912,7 @@ func TestModel(t *testing.T) {
 
 			_, cmd := m.Update(keyPress("ctrl+c"))
 
+			require.NotNil(t, cmd)
 			require.Equal(t, tea.QuitMsg{}, cmd())
 		})
 
@@ -893,6 +933,14 @@ func TestModel(t *testing.T) {
 			view := screen(press(m, "?"))
 
 			require.Regexp(t, `N +previous match`, view)
+		})
+
+		t.Run("shows one column with nothing cut off on a narrow screen tall enough for it", func(t *testing.T) {
+			m, _ := startWith(threeHunks(t)).Update(tea.WindowSizeMsg{Width: 100, Height: 80})
+
+			view := screen(press(m, "?"))
+
+			require.Contains(t, view, "mark the file viewed, then go to the next file")
 		})
 
 		t.Run("draws on a screen too narrow for any column", func(t *testing.T) {

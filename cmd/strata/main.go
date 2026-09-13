@@ -134,10 +134,6 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	if err != nil {
 		return err
 	}
-	theme := settings.Theme
-	if cmd.IsSet("theme") {
-		theme = cmd.String("theme")
-	}
 
 	common, err := repo.Run(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
@@ -155,7 +151,7 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,
 		Diffs:       diff.NewLoader(repo),
-		Highlighter: syntax.NewHighlighter(theme),
+		Highlighter: syntax.NewHighlighter(themeOf(cmd, settings)),
 		Viewed:      marks,
 		Sync:        sync,
 	}, ui.Options{Keys: settings.Keys, Split: settings.Split})
@@ -172,6 +168,13 @@ func loadConfig(cmd *cli.Command) (config.Config, error) {
 		return config.Default(), nil
 	}
 	return settings, err
+}
+
+func themeOf(cmd *cli.Command, settings config.Config) string {
+	if cmd.IsSet("theme") {
+		return cmd.String("theme")
+	}
+	return settings.Theme
 }
 
 // colorprofile.Detect trusts COLORTERM before it asks tmux, but tmux shows

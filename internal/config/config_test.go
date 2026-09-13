@@ -25,8 +25,10 @@ func TestConfig(t *testing.T) {
 		t.Run("takes the options from the file", func(t *testing.T) {
 			c, err := config.Parse("theme = \"github\"\nsplit = false\n")
 
+			want := config.Default()
+			want.Theme, want.Split = "github", false
 			require.NoError(t, err)
-			require.Equal(t, []any{"github", false}, []any{c.Theme, c.Split})
+			require.Equal(t, want, c)
 		})
 
 		t.Run("the keys of an action replace its default keys", func(t *testing.T) {
@@ -64,8 +66,17 @@ previous_file = "H"
 		t.Run("reads back the file that TOML writes", func(t *testing.T) {
 			want := config.Default()
 			want.Theme, want.Split = "github", false
-			require.NoError(t, want.Keys.Set(keymap.NextHunk, []string{"ctrl+n", "n"}))
-			require.NoError(t, want.Keys.Set(keymap.PreviousHunk, nil))
+			for a, keys := range map[keymap.Action][]string{
+				keymap.Quit:         {"Q"},
+				keymap.StackTop:     {"ctrl+g"},
+				keymap.FilesFold:    {"f"},
+				keymap.NextHunk:     {"ctrl+n", "n"},
+				keymap.PreviousHunk: nil,
+				keymap.ClearSearch:  {"ctrl+l"},
+				keymap.ClosePlan:    {"x"},
+			} {
+				require.NoError(t, want.Keys.Set(a, keys))
+			}
 
 			c, err := config.Parse(want.TOML())
 
@@ -84,6 +95,7 @@ previous_file = "H"
 		t.Run("names each option, table and action that strata does not know", func(t *testing.T) {
 			_, err := config.Parse(`
 themee = "github"
+kyes.quit = "Q"
 
 [keys]
 quitt = "q"
@@ -94,11 +106,16 @@ next_hunk = "n"
 [keys.diff]
 nxt_hunk = "n"
 
+[key.diff]
+next_hunk = "n"
+
 [colours]
 added_line = "#213528"
 `)
 
 			require.EqualError(t, err, "unknown option themee\n"+
+				"unknown option kyes\n"+
+				"unknown option key\n"+
 				"unknown option colours\n"+
 				"unknown table keys.dif\n"+
 				"unknown action keys.diff.nxt_hunk\n"+
@@ -117,10 +134,22 @@ added_line = "#213528"
 			require.EqualError(t, err, "keys.quit: want a key name or a list of key names")
 		})
 
-		t.Run("keys that is not a table", func(t *testing.T) {
+		t.Run("a list with a value that is not a key name names its action", func(t *testing.T) {
+			_, err := config.Parse("[keys]\nquit = [\"q\", 5]\n")
+
+			require.EqualError(t, err, "keys.quit: want a key name or a list of key names")
+		})
+
+		t.Run("keys that is not a table is an error", func(t *testing.T) {
 			_, err := config.Parse("keys = 5\n")
 
 			require.EqualError(t, err, "keys: want a table")
+		})
+
+		t.Run("a key name that strata does not know hides the conflicts that its default keys give", func(t *testing.T) {
+			_, err := config.Parse("[keys.diff]\nnext_file = \"n\"\nnext_hunk = \"ctrl+enterr\"\n")
+
+			require.EqualError(t, err, `keys.diff.next_hunk: "ctrl+enterr" is not a key name`)
 		})
 
 		t.Run("a key that another action of the table has by default names the two actions", func(t *testing.T) {

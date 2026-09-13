@@ -6,17 +6,22 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 var modifiers = []string{"ctrl", "alt", "shift", "meta", "hyper", "super"}
 
 var keyNames = func() []string {
-	names := []string{
-		"enter", "tab", "backspace", "esc", "space", "up", "down", "left", "right",
-		"begin", "find", "insert", "delete", "select", "pgup", "pgdown", "home", "end",
+	var names []string
+	for _, code := range []rune{tea.KeyEnter, tea.KeyTab, tea.KeyBackspace, tea.KeyEscape, tea.KeySpace} {
+		names = append(names, tea.Key{Code: code}.String())
 	}
-	for i := 1; i <= 63; i++ {
-		names = append(names, fmt.Sprintf("f%d", i))
+	// Bubble Tea numbers its other special keys from KeyUp to KeyIsoLevel5Shift.
+	for code := tea.KeyUp; code <= tea.KeyIsoLevel5Shift; code++ {
+		if name := (tea.Key{Code: code}).String(); utf8.RuneCountInString(name) > 1 && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
 	}
 	return names
 }()

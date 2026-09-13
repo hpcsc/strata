@@ -783,12 +783,8 @@ func (m Model) hints() string {
 			m.hint("back", keymap.FilesBack), m.hint("split", keymap.ToggleSplit), m.hint("zoom", keymap.ToggleZoom),
 			m.hint("keys", keymap.Help))
 	}
-	hunk := m.hint("hunk", keymap.NextHunk, keymap.PreviousHunk)
-	if !m.diff.find.Empty() {
-		hunk = ""
-	}
 	return joinHints(m.hint("scroll", keymap.DiffDown, keymap.DiffUp), m.hint("page", keymap.DiffHalfPageDown, keymap.DiffHalfPageUp),
-		hunk, m.hint("file", keymap.NextFile, keymap.PreviousFile), m.hint("viewed", keymap.ToggleViewed),
+		m.hint("hunk", keymap.NextHunk, keymap.PreviousHunk), m.hint("file", keymap.NextFile, keymap.PreviousFile), m.hint("viewed", keymap.ToggleViewed),
 		m.hint("branch", keymap.PreviousBranch, keymap.NextBranch), m.hint("split", keymap.ToggleSplit),
 		m.hint("zoom", keymap.ToggleZoom), m.hint("keys", keymap.Help))
 }
@@ -812,8 +808,8 @@ func (m Model) planHints() string {
 func (m Model) hint(label string, actions ...keymap.Action) string {
 	var keys []string
 	for _, a := range actions {
-		if k := m.keys.Keys(a); len(k) > 0 {
-			keys = append(keys, shortKey(k[0]))
+		if i := slices.IndexFunc(m.keys.Keys(a), func(k string) bool { return m.action(k) == a }); i >= 0 {
+			keys = append(keys, shortKey(m.keys.Keys(a)[i]))
 		}
 	}
 	if len(keys) == 0 {

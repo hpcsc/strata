@@ -70,16 +70,21 @@ func Parse(text string) (Config, error) {
 	}
 
 	var problems []error
+	var unknown []string
 	for _, key := range meta.Undecoded() {
-		if len(key) == 1 {
-			problems = append(problems, fmt.Errorf("unknown option %s", key))
+		if key[0] != "keys" && !slices.Contains(unknown, key[0]) {
+			unknown = append(unknown, key[0])
+			problems = append(problems, fmt.Errorf("unknown option %s", key[0]))
 		}
 	}
 	switch keys := f.Keys.(type) {
 	case nil:
 	case map[string]any:
-		problems = append(problems, bindAll(&c.Keys, keys)...)
-		problems = append(problems, c.Keys.Check())
+		if bindProblems := bindAll(&c.Keys, keys); len(bindProblems) > 0 {
+			problems = append(problems, bindProblems...)
+		} else {
+			problems = append(problems, c.Keys.Check())
+		}
 	default:
 		problems = append(problems, errors.New("keys: want a table"))
 	}
@@ -91,19 +96,24 @@ func Parse(text string) (Config, error) {
 
 func bindAll(k *keymap.Keymap, keys map[string]any) []error {
 	var problems []error
+	add := func(err error) {
+		if err != nil {
+			problems = append(problems, err)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(keys)) {
 		entries, ok := keys[name].(map[string]any)
 		if !ok {
-			problems = append(problems, bind(k, keymap.Anywhere, name, keys[name]))
+			add(bind(k, keymap.Anywhere, name, keys[name]))
 			continue
 		}
 		table, ok := keymap.TableNamed("keys." + name)
 		if !ok {
-			problems = append(problems, fmt.Errorf("unknown table keys.%s", name))
+			add(fmt.Errorf("unknown table keys.%s", name))
 			continue
 		}
 		for _, action := range slices.Sorted(maps.Keys(entries)) {
-			problems = append(problems, bind(k, table, action, entries[action]))
+			add(bind(k, table, action, entries[action]))
 		}
 	}
 	return problems

@@ -35,6 +35,19 @@ describe('the config file', () => {
     expect(await strata.waitForText('Keys · any key closes')).toMatch(/L +next file, past folded folders/)
   })
 
+  it('split = false starts with the unified diff', async () => {
+    const strata = await openStrata(ordersRepo().dir, [], { XDG_CONFIG_HOME: configHome('split = false\n') })
+    await strata.waitForText('Branch · orders-handler')
+
+    await strata.press('enter')
+    await strata.waitForText('orders/handler.go · 1/2')
+
+    await strata.press(']')
+
+    const screen = await strata.waitForText('order.Reason = "requested"')
+    expect(screen).toContain('│+ ')
+  })
+
   it('an unknown action in the config file stops strata with the name of the action', async () => {
     const result = await runStrata(ordersRepo().dir, [], { XDG_CONFIG_HOME: configHome('[keys.diff]\nnxt_hunk = "n"\n') })
 

@@ -3,20 +3,22 @@
 package keymap_test
 
 import (
+	"fmt"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/hpcsc/strata/internal/keymap"
 	"github.com/stretchr/testify/require"
 )
 
 func TestKeymap(t *testing.T) {
 	t.Run("action", func(t *testing.T) {
-		t.Run("a default key gives its action in the table", func(t *testing.T) {
-			require.Equal(t, keymap.NextHunk, keymap.Default().Action(keymap.InDiff, "n"))
-		})
+		t.Run("a key gives its action only in the table of that action", func(t *testing.T) {
+			keys := keymap.Default()
 
-		t.Run("a key that no action of the table has gives no action", func(t *testing.T) {
-			require.Equal(t, keymap.None, keymap.Default().Action(keymap.InStack, "n"))
+			found := []keymap.Action{keys.Action(keymap.InDiff, "n"), keys.Action(keymap.InStack, "n")}
+
+			require.Equal(t, []keymap.Action{keymap.NextHunk, keymap.None}, found)
 		})
 	})
 
@@ -42,7 +44,7 @@ func TestKeymap(t *testing.T) {
 			keys := keymap.Default()
 
 			require.NoError(t, keys.Set(keymap.NextHunk, []string{
-				"escape", "Enter", "alt+ctrl+a", "shift+n", "ctrl+N", " ", "+", "ctrl++", "CTRL+x", "N", "?",
+				"escape", "Enter", "alt+ctrl+a", "shift+n", "ctrl+N", " ", "+", "ctrl++", "CTRL+x", "?",
 			}))
 
 			require.Equal(t, []string{
@@ -50,11 +52,46 @@ func TestKeymap(t *testing.T) {
 			}, keys.Keys(keymap.NextHunk))
 		})
 
+		t.Run("a key name matches the name that Bubble Tea gives its key press", func(t *testing.T) {
+			presses := []struct {
+				name  string
+				press tea.KeyPressMsg
+			}{
+				{"shift+n", tea.KeyPressMsg{Code: 'n', ShiftedCode: 'N', Text: "N", Mod: tea.ModShift}},
+				{"ctrl+N", tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl | tea.ModShift}},
+				{"alt+ctrl+a", tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl | tea.ModAlt}},
+				{" ", tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}},
+				{"escape", tea.KeyPressMsg{Code: tea.KeyEscape}},
+				{"shift+tab", tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}},
+				{"menu", tea.KeyPressMsg{Code: tea.KeyMenu}},
+				{"capslock", tea.KeyPressMsg{Code: tea.KeyCapsLock}},
+				{"plus", tea.KeyPressMsg{Code: tea.KeyKpPlus}},
+				{"f13", tea.KeyPressMsg{Code: tea.KeyF13}},
+			}
+			var names, pressed []string
+			for _, p := range presses {
+				keys := keymap.Default()
+				require.NoError(t, keys.Set(keymap.NextHunk, []string{p.name}))
+				names = append(names, keys.Keys(keymap.NextHunk)...)
+				pressed = append(pressed, p.press.String())
+			}
+
+			require.Equal(t, pressed, names)
+		})
+
+		t.Run("keeps a key one time when two names give the same key", func(t *testing.T) {
+			keys := keymap.Default()
+
+			require.NoError(t, keys.Set(keymap.NextHunk, []string{"shift+n", "N"}))
+
+			require.Equal(t, []string{"N"}, keys.Keys(keymap.NextHunk))
+		})
+
 		t.Run("rejects a key name that Bubble Tea does not give", func(t *testing.T) {
 			var problems []string
 			for _, name := range []string{"ctrl+enterr", "cmd+a", "", "ctrl+", "shift+1"} {
 				keys := keymap.Default()
-				problems = append(problems, keys.Set(keymap.NextHunk, []string{name}).Error())
+				problems = append(problems, fmt.Sprint(keys.Set(keymap.NextHunk, []string{name})))
 			}
 
 			require.Equal(t, []string{
