@@ -25,7 +25,7 @@ describe('the S key', () => {
     const strata = await openStrata(repo.dir)
     await strata.waitForText('S sync')
     await strata.type('S')
-    await strata.waitForText('enter move 2 stacks')
+    await strata.waitForText('⏎ move 2 stacks')
 
     await strata.press('enter')
 
@@ -99,7 +99,7 @@ describe('the c key', () => {
     await strata.press('enter')
     await strata.type('git add orders/events.go && git -c core.editor=true rebase --continue && exit')
     await strata.press('enter')
-    await strata.waitForText('enter move the resolved stack')
+    await strata.waitForText('⏎ move the resolved stack')
     await strata.press('enter')
 
     const screen = await strata.waitForText('Moved 1 stack.')

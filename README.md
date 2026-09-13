@@ -101,6 +101,8 @@ Each command installs the latest build of its channel when this build is a diffe
 
 ## Keys
 
+These are the default keys. The [config file](#config-file) can change them.
+
 | Where | Key | Action |
 | --- | --- | --- |
 | Anywhere | `[` `]` | Go to the previous or next branch. The same file stays selected when that branch changes it. |
@@ -142,6 +144,60 @@ and the panel changes as you type:
 
 `enter` keeps the search and `esc` clears it. When the search line is closed, `esc` in the panel clears its
 search. A search in lower case ignores case, and a search with a capital letter matches case exactly.
+
+## Config file
+
+strata reads options and keys from `~/.config/strata/config.toml`. When `XDG_CONFIG_HOME` is set, strata
+reads `$XDG_CONFIG_HOME/strata/config.toml`. `--config <path>` gives a different file. When the file does
+not exist, strata uses its defaults.
+
+```toml
+theme = "github"
+split = false
+
+[keys]
+quit = ["q", "Q"]
+
+[keys.diff]
+next_hunk = ["n", "ctrl+n"]
+previous_hunk = ["p", "ctrl+p"]
+next_file = "L"
+previous_file = "H"
+```
+
+- `theme` is the chroma style of the code and the diff. `--theme` overrides it.
+- `split = false` starts the diff unified, not side by side.
+- An action takes one key, a list of keys, or `[]` for no key. The keys replace the default keys of the
+  action. In this example, `J` and `K` do nothing in the diff.
+
+`strata config` prints a config file with all the options and all the actions, with their default keys.
+Use it to start your own file:
+
+```sh
+mkdir -p ~/.config/strata
+strata config > ~/.config/strata/config.toml
+```
+
+A key name is the name that Bubble Tea gives the key. It is a character, such as `n`, `N` or `?`, or a
+name, such as `enter`, `esc`, `space`, `tab`, `shift+tab`, `up`, `pgdown`, `home` or `ctrl+d`. `ctrl+c`
+always quits, so no action can have it.
+
+Each table applies at a different time. strata looks for a key in the tables in this order:
+
+| Table | When it applies |
+| --- | --- |
+| `[keys.plan]` | While the sync plan is open. `move_stacks` and `resolve_conflict` apply only in the Stack panel. |
+| `[keys.search]` | While the panel with the focus has a search. `next_match` and `previous_match` apply only in the Diff panel. |
+| `[keys]` | In all panels. |
+| `[keys.stack]`, `[keys.files]`, `[keys.diff]` | In the panel with the focus. |
+
+strata checks the file before it opens the screen. It stops with an error for these problems:
+
+- The file is not correct TOML.
+- An option, a table, an action or a key has a name that strata does not know.
+- Two actions in one table have the same key.
+- An action in `[keys]` and an action in a panel table have the same key. The action in the panel table
+  can never run, because strata looks in `[keys]` first.
 
 ## Parents
 

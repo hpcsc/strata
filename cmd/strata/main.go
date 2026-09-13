@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/hpcsc/strata/internal/config"
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/progress"
@@ -54,7 +56,8 @@ func newCommand(syncErr error) *cli.Command {
 			&cli.BoolFlag{Name: "remote", Aliases: []string{"r"}, Usage: "review the remote's branches, such as a teammate's stack"},
 			&cli.StringFlag{Name: "trunk", Usage: "the branch stacks sit on (default: origin/HEAD, origin/main, origin/master, main or master)"},
 			&cli.BoolFlag{Name: "list", Aliases: []string{"l"}, Usage: "print the stack and exit"},
-			&cli.StringFlag{Name: "theme", Value: "nord", Usage: "chroma style for syntax highlighting and diff colours"},
+			&cli.StringFlag{Name: "theme", Usage: "chroma style for syntax highlighting and diff colours (default: theme in the config file, or nord)"},
+			&cli.StringFlag{Name: "config", Usage: "read the options and keys from this file (default: $XDG_CONFIG_HOME/strata/config.toml or ~/.config/strata/config.toml)"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return run(ctx, cmd, syncErr)
@@ -65,6 +68,14 @@ func newCommand(syncErr error) *cli.Command {
 				Usage: "print the tag strata was built from, or its commit when it has no tag",
 				Action: func(_ context.Context, cmd *cli.Command) error {
 					_, err := fmt.Fprintln(cmd.Root().Writer, version.Current())
+					return err
+				},
+			},
+			{
+				Name:  "config",
+				Usage: "print a config file with the default options and keys",
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					_, err := fmt.Fprint(cmd.Root().Writer, config.Default().TOML())
 					return err
 				},
 			},
@@ -119,6 +130,14 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		printTree(os.Stdout, tree)
 		return nil
 	}
+	settings, err := loadConfig(cmd)
+	if err != nil {
+		return err
+	}
+	theme := settings.Theme
+	if cmd.IsSet("theme") {
+		theme = cmd.String("theme")
+	}
 
 	common, err := repo.Run(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
@@ -136,12 +155,23 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,
 		Diffs:       diff.NewLoader(repo),
-		Highlighter: syntax.NewHighlighter(cmd.String("theme")),
+		Highlighter: syntax.NewHighlighter(theme),
 		Viewed:      marks,
 		Sync:        sync,
-	})
+	}, ui.Options{Keys: settings.Keys, Split: settings.Split})
 	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile())).Run()
 	return err
+}
+
+func loadConfig(cmd *cli.Command) (config.Config, error) {
+	if path := cmd.String("config"); path != "" {
+		return config.Load(path)
+	}
+	settings, err := config.Load(config.Path(os.Getenv))
+	if errors.Is(err, fs.ErrNotExist) {
+		return config.Default(), nil
+	}
+	return settings, err
 }
 
 // colorprofile.Detect trusts COLORTERM before it asks tmux, but tmux shows

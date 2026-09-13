@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hpcsc/strata/internal/diff"
+	"github.com/hpcsc/strata/internal/keymap"
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
@@ -133,11 +134,18 @@ func keyPress(key string) tea.KeyPressMsg {
 	case "esc":
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	}
+	if letter, ok := strings.CutPrefix(key, "ctrl+"); ok {
+		code, _ := utf8.DecodeRuneInString(letter)
+		return tea.KeyPressMsg{Code: code, Mod: tea.ModCtrl}
+	}
 	code, _ := utf8.DecodeRuneInString(key)
 	return tea.KeyPressMsg{Code: code, Text: key}
 }
 
 func TestModel(t *testing.T) {
+	defaults := func() ui.Options {
+		return ui.Options{Keys: keymap.Default(), Split: true}
+	}
 	file := func(path string) diff.File {
 		return diff.File{Path: path, Status: diff.Modified, OldBlob: "old-" + path, NewBlob: "new-" + path, Insertions: 3, Deletions: 1}
 	}
@@ -187,6 +195,20 @@ func TestModel(t *testing.T) {
 			file("README.md"), file("common/modules/a/one.go"), file("common/modules/a/two.go"), file("common/modules/b/three.go"),
 		}}}
 	}
+	threeHunks := func(t *testing.T) modelSources {
+		t.Helper()
+		src := nestedFiles(t)
+		var hunks []diff.Hunk
+		for _, start := range []int{1, 100, 200} {
+			var lines []diff.Line
+			for i := start; i < start+30; i++ {
+				lines = append(lines, diff.Line{Kind: diff.Context, Text: fmt.Sprintf("line %d", i), OldNumber: i, NewNumber: i})
+			}
+			hunks = append(hunks, diff.Hunk{OldStart: start, OldLines: 30, NewStart: start, NewLines: 30, Lines: lines})
+		}
+		src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: hunks}}
+		return src
+	}
 	twoBranches := func(t *testing.T) modelSources {
 		t.Helper()
 		tree := stack.Tree{Trunk: "origin/main", Current: "first", Branches: []stack.Branch{
@@ -207,16 +229,19 @@ func TestModel(t *testing.T) {
 			at += i + len(text)
 		}
 	}
-	startWith := func(src modelSources) tea.Model {
+	startWithOptions := func(src modelSources, opts ui.Options) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
 			Tree:        memoryTree{tree: src.tree},
 			Diffs:       memoryDiffs{files: src.files, patches: src.patches},
 			Highlighter: plainText{},
 			Viewed:      src.viewed,
-		})
+		}, opts)
 		var sized tea.Model = m
 		sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 		return settle(sized, m.Init())
+	}
+	startWith := func(src modelSources) tea.Model {
+		return startWithOptions(src, defaults())
 	}
 	start := func(viewed memoryViewed) tea.Model {
 		tree, files := stackOf()
@@ -225,7 +250,7 @@ func TestModel(t *testing.T) {
 			Diffs:       memoryDiffs{files: files},
 			Highlighter: plainText{},
 			Viewed:      viewed,
-		})
+		}, defaults())
 		var sized tea.Model = m
 		sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 		return settle(sized, m.Init())
@@ -302,7 +327,7 @@ func TestModel(t *testing.T) {
 				Diffs:       memoryDiffs{files: map[string][]diff.File{"rules": {file(long)}}},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
-			})
+			}, defaults())
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 20})
 
@@ -443,6 +468,13 @@ func TestModel(t *testing.T) {
 			require.NotContains(t, screen(press(moved, "esc")), "/needle")
 		})
 
+		t.Run("while a search is on in the diff, the footer shows the match keys in place of the hunk keys", func(t *testing.T) {
+			view := screen(press(startWith(threeHunks(t)), "enter", "enter", "/", "line", "enter"))
+
+			require.Contains(t, view, "n/N match")
+			require.NotContains(t, view, "n/p hunk")
+		})
+
 		t.Run("N in the diff moves back to the previous match", func(t *testing.T) {
 			src := nestedFiles(t)
 			var lines []diff.Line
@@ -471,7 +503,7 @@ func TestModel(t *testing.T) {
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
 				Sync:        sync,
-			})
+			}, defaults())
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 			return settle(sized, m.Init())
@@ -549,7 +581,7 @@ func TestModel(t *testing.T) {
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
 				Sync:        sync,
-			})
+			}, defaults())
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 			return settle(sized, m.Init())
@@ -563,7 +595,7 @@ func TestModel(t *testing.T) {
 		t.Run("while the plan shows, the footer tells how many stacks enter moves", func(t *testing.T) {
 			view := screen(press(startMoving(&memorySync{plan: movable()}, restacked()), "S"))
 
-			require.Contains(t, view, "enter move 1 stack")
+			require.Contains(t, view, "⏎ move 1 stack")
 		})
 
 		t.Run("enter moves the stacks of the plan, reads the branches again, and closes the plan", func(t *testing.T) {
@@ -595,6 +627,15 @@ func TestModel(t *testing.T) {
 
 			require.Empty(t, sync.moved)
 			require.Contains(t, view, "o fold")
+		})
+
+		t.Run("while the plan shows, enter in the files goes to the diff and moves nothing", func(t *testing.T) {
+			sync := &memorySync{plan: movable()}
+
+			view := screen(press(startMoving(sync, restacked()), "S", "tab", "enter"))
+
+			require.Empty(t, sync.moved)
+			require.Contains(t, view, "j/k scroll")
 		})
 
 		t.Run("a move that fails shows its error in the status line", func(t *testing.T) {
@@ -672,7 +713,7 @@ func TestModel(t *testing.T) {
 
 			require.Regexp(t, `└─ events\s+moves onto origin/main`, screen(m))
 			require.NotContains(t, screen(m), "billing")
-			require.Contains(t, screen(m), "enter move the resolved stack")
+			require.Contains(t, screen(m), "⏎ move the resolved stack")
 			view := screen(press(m, "enter"))
 			require.Equal(t, 1, sync.finished)
 			require.Empty(t, sync.moved)
@@ -717,20 +758,6 @@ func TestModel(t *testing.T) {
 	})
 
 	t.Run("diff", func(t *testing.T) {
-		threeHunks := func(t *testing.T) modelSources {
-			t.Helper()
-			src := nestedFiles(t)
-			var hunks []diff.Hunk
-			for _, start := range []int{1, 100, 200} {
-				var lines []diff.Line
-				for i := start; i < start+30; i++ {
-					lines = append(lines, diff.Line{Kind: diff.Context, Text: fmt.Sprintf("line %d", i), OldNumber: i, NewNumber: i})
-				}
-				hunks = append(hunks, diff.Hunk{OldStart: start, OldLines: 30, NewStart: start, NewLines: 30, Lines: lines})
-			}
-			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: hunks}}
-			return src
-		}
 
 		t.Run("n goes to the next hunk", func(t *testing.T) {
 			view := screen(press(startWith(threeHunks(t)), "enter", "enter", "n"))
@@ -753,7 +780,7 @@ func TestModel(t *testing.T) {
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{theme: syntax.Theme{Inserted: syntax.Color{R: 10, G: 200, B: 30, Set: true}}},
 				Viewed:      memoryViewed{},
-			})
+			}, defaults())
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 
@@ -769,7 +796,7 @@ func TestModel(t *testing.T) {
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
-			})
+			}, defaults())
 			var sized tea.Model = m
 			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
 			profiled, _ := settle(sized, m.Init()).Update(tea.ColorProfileMsg{Profile: colorprofile.ANSI256})
@@ -781,6 +808,99 @@ func TestModel(t *testing.T) {
 			backgrounds := regexp.MustCompile(`48;2;(\d+);(\d+);(\d+)`).FindAllStringSubmatch(view[:at], -1)
 			require.NotEmpty(t, backgrounds)
 			require.Subset(t, []string{"0", "95", "135", "175", "215", "255"}, backgrounds[len(backgrounds)-1][1:])
+		})
+	})
+
+	t.Run("options", func(t *testing.T) {
+		withKeys := func(t *testing.T, a keymap.Action, keys ...string) ui.Options {
+			t.Helper()
+			opts := defaults()
+			require.NoError(t, opts.Keys.Set(a, keys))
+			return opts
+		}
+
+		t.Run("a key that the options give an action runs that action", func(t *testing.T) {
+			m := startWithOptions(threeHunks(t), withKeys(t, keymap.NextHunk, "ctrl+n"))
+
+			view := screen(press(m, "enter", "enter", "ctrl+n"))
+
+			require.Contains(t, view, "@@ -100,30 +100,30 @@")
+		})
+
+		t.Run("a default key that the options take from an action does nothing", func(t *testing.T) {
+			m := startWithOptions(threeHunks(t), withKeys(t, keymap.NextHunk, "ctrl+n"))
+
+			view := screen(press(m, "enter", "enter", "n"))
+
+			require.Contains(t, view, "@@ -1,30 +1,30 @@")
+		})
+
+		t.Run("the keys screen shows each action with all the keys that the options give it", func(t *testing.T) {
+			m := startWithOptions(threeHunks(t), withKeys(t, keymap.NextHunk, "ctrl+n", "x"))
+
+			view := screen(press(m, "?"))
+
+			require.Regexp(t, `ctrl\+n  x +next hunk`, view)
+		})
+
+		t.Run("the footer shows the first key of each action", func(t *testing.T) {
+			m := startWithOptions(threeHunks(t), withKeys(t, keymap.NextHunk, "ctrl+n", "n"))
+
+			view := screen(press(m, "enter", "enter"))
+
+			require.Contains(t, view, "^n/p hunk")
+		})
+
+		t.Run("the footer leaves out an action that has no key", func(t *testing.T) {
+			opts := withKeys(t, keymap.NextHunk)
+			require.NoError(t, opts.Keys.Set(keymap.PreviousHunk, nil))
+
+			view := screen(press(startWithOptions(threeHunks(t), opts), "enter", "enter"))
+
+			require.Contains(t, view, "^d/^u page · J/K file")
+		})
+
+		t.Run("a key of a match action runs the action of the files panel while the files have a filter", func(t *testing.T) {
+			m := startWithOptions(nestedFiles(t), withKeys(t, keymap.NextMatch, "j"))
+
+			view := screen(press(m, "enter", "t", "/", ".go", "enter", "j"))
+
+			require.Contains(t, view, "common/modules/a/two.go · 3/4")
+		})
+
+		t.Run("ctrl+c quits when the options leave quit with no key", func(t *testing.T) {
+			m := startWithOptions(threeHunks(t), withKeys(t, keymap.Quit))
+
+			_, cmd := m.Update(keyPress("ctrl+c"))
+
+			require.Equal(t, tea.QuitMsg{}, cmd())
+		})
+
+		t.Run("split off starts with the unified diff that s shows", func(t *testing.T) {
+			unified := defaults()
+			unified.Split = false
+
+			started := screen(press(startWithOptions(nestedFiles(t), unified), "enter"))
+
+			require.Equal(t, screen(press(startWith(nestedFiles(t)), "enter", "s")), started)
+		})
+	})
+
+	t.Run("keys screen", func(t *testing.T) {
+		t.Run("keeps two columns on a narrow screen that is too short for one column", func(t *testing.T) {
+			m, _ := startWith(threeHunks(t)).Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+
+			view := screen(press(m, "?"))
+
+			require.Regexp(t, `N +previous match`, view)
+		})
+
+		t.Run("draws on a screen too narrow for any column", func(t *testing.T) {
+			for width := 1; width <= 12; width++ {
+				m, _ := startWith(threeHunks(t)).Update(tea.WindowSizeMsg{Width: width, Height: 10})
+
+				require.NotPanics(t, func() { screen(press(m, "?")) }, "width %d", width)
+			}
 		})
 	})
 

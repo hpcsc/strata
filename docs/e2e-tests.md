@@ -100,6 +100,9 @@ Two helpers start strata:
 | `runStrata(cwd, args, env)` | Commands that print and stop, such as `--list`, `version` and `update` | Starts strata as a child process with pipes. It gives stdout, stderr and the exit status. |
 | `openStrata(cwd, args, env)` | The screen | Starts `sh -c 'printf "\033[20l"; <env> <strata> <args>; echo "EXIT:$?"'` in a pseudo-terminal. When strata stops, the shell writes its exit status on the screen, so a test can wait for `EXIT:0`. [New line mode](#new-line-mode) tells why the command starts with `printf`. |
 
+Both helpers set `XDG_CONFIG_HOME` to an empty directory, so strata does not read the config file of the
+person who runs the tests. A test that needs a config file gives its own `XDG_CONFIG_HOME` in `env`.
+
 `runStrata` does not block. The update tests run a fake server in the test process, and that server must
 answer while strata waits for it.
 

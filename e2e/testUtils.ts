@@ -175,8 +175,14 @@ export function ordersRepo(): Repo {
   return repo
 }
 
+// strata reads the config file of the person who runs the tests unless
+// XDG_CONFIG_HOME names another directory.
+function withoutConfig(env: Record<string, string>): Record<string, string> {
+  return { XDG_CONFIG_HOME: scratchDir(), ...env }
+}
+
 export async function openStrata(cwd: string, args: string[] = [], env: Record<string, string> = {}): Promise<Session> {
-  const assignments = Object.entries(env)
+  const assignments = Object.entries(withoutConfig(env))
     .map(([name, value]) => `${name}='${value.replaceAll("'", `'\\''`)}'`)
     .join(' ')
   const session = await launchTerminal({
@@ -209,7 +215,7 @@ export function runStrata(
   executable = getExecutablePath(),
 ): Promise<Result> {
   return new Promise((done, fail) => {
-    const child = spawn(executable, args, { cwd, env: { ...process.env, ...env } })
+    const child = spawn(executable, args, { cwd, env: { ...process.env, ...withoutConfig(env) } })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => (stdout += chunk))

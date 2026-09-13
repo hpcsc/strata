@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/hpcsc/strata/internal/keymap"
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
@@ -50,9 +52,15 @@ type resolveStarted struct {
 
 type shellExited struct{}
 
+type Options struct {
+	Keys  keymap.Keymap
+	Split bool
+}
+
 type Model struct {
 	ctx         context.Context
 	sources     Sources
+	keys        keymap.Keymap
 	cache       *cache
 	stack       stackPanel
 	files       filesPanel
@@ -77,15 +85,16 @@ type Model struct {
 	rebaseDone bool
 }
 
-func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
+func New(ctx context.Context, tree stack.Tree, sources Sources, opts Options) Model {
 	m := Model{
 		ctx:     ctx,
 		sources: sources,
+		keys:    opts.Keys,
 		cache:   newCache(ctx, sources),
 		stack:   newStackPanel(tree),
 		files:   newFilesPanel(sources.Viewed),
 		diff:    diffPanel{theme: sources.Highlighter.Theme()},
-		split:   true,
+		split:   opts.Split,
 	}
 	m.initial = m.showSelection()
 	return m
@@ -171,7 +180,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
 	if m.help {
 		m.help = false
 		return m, nil
@@ -180,164 +188,149 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.prompt.open {
 		return m.promptKey(msg)
 	}
-
-	switch key {
-	case "ctrl+c", "q":
+	key := msg.String()
+	if key == "ctrl+c" {
 		return m, tea.Quit
-	case "?":
+	}
+
+	switch m.action(key) {
+	case keymap.Quit:
+		return m, tea.Quit
+	case keymap.Help:
 		m.help = true
-		return m, nil
-	case "S":
-		return m, m.planSync()
-	case "esc":
-		if m.stack.plan != nil {
-			m.stack.closePlan()
-			m.rebaseDone = false
-			m.cache.clear()
-			m.filesKey = ""
-			m.layout()
-			return m, m.showSelection()
-		}
-	case "/":
+	case keymap.StartSearch:
 		m.prompt.start(m.focus, m.query(m.focus).String())
-		return m, nil
-	case "tab":
+	case keymap.NextPanel:
 		if !m.zoomed {
 			m.focus = (m.focus + 1) % focusCount
 		}
-		return m, nil
-	case "shift+tab":
+	case keymap.PreviousPanel:
 		if !m.zoomed {
 			m.focus = (m.focus + focusCount - 1) % focusCount
 		}
-		return m, nil
-	case "[":
-		return m, m.stepBranch(-1)
-	case "]":
+	case keymap.NextBranch, keymap.StackDown:
 		return m, m.stepBranch(1)
-	case "s":
+	case keymap.PreviousBranch, keymap.StackUp:
+		return m, m.stepBranch(-1)
+	case keymap.ToggleSplit:
 		m.split = !m.split
 		m.diff.render(m.split)
-		return m, nil
-	case "z":
+	case keymap.ToggleZoom:
 		m.zoomed = !m.zoomed
 		if m.zoomed {
 			m.focus = focusDiff
 		}
 		m.layout()
-		return m, nil
-	case "r":
-		return m, m.reloadTree()
-	case "t":
+	case keymap.ToggleTree:
 		m.files.toggleFlat()
-		return m, nil
-	case "v":
+	case keymap.ToggleViewed:
 		if m.focus != focusStack {
 			return m, m.toggleViewed()
 		}
-	}
-
-	switch m.focus {
-	case focusStack:
-		switch key {
-		case "j", "down":
-			return m, m.stepBranch(1)
-		case "k", "up":
-			return m, m.stepBranch(-1)
-		case "g", "home":
-			return m, m.branchAtRow(0)
-		case "G", "end":
-			return m, m.branchAtRow(len(m.stack.shown) - 1)
-		case "esc":
-			return m, m.setQuery(focusStack, "")
-		case "c":
-			return m, m.resolveConflict()
-		case "enter", "l", "right":
-			if key == "enter" && m.stack.plan != nil {
-				return m, m.moveStacks()
-			}
+	case keymap.Refresh:
+		return m, m.reloadTree()
+	case keymap.Sync:
+		return m, m.planSync()
+	case keymap.StackTop:
+		return m, m.branchAtRow(0)
+	case keymap.StackBottom:
+		return m, m.branchAtRow(len(m.stack.shown) - 1)
+	case keymap.StackOpen:
+		m.focus = focusFiles
+	case keymap.FilesDown:
+		return m, m.moveRow(m.files.cursor + 1)
+	case keymap.FilesUp:
+		return m, m.moveRow(m.files.cursor - 1)
+	case keymap.FilesTop:
+		return m, m.moveRow(0)
+	case keymap.FilesBottom:
+		return m, m.moveRow(len(m.files.rows) - 1)
+	case keymap.FilesFold:
+		if m.files.toggleFolder() {
+			return m, m.showSelection()
+		}
+	case keymap.FilesOpen:
+		m.focus = focusDiff
+	case keymap.FilesBack:
+		m.focus = focusStack
+	case keymap.FilesHalfPageDown, keymap.DiffHalfPageDown:
+		m.diff.scroll(m.diff.height / 2)
+	case keymap.FilesHalfPageUp, keymap.DiffHalfPageUp:
+		m.diff.scroll(-m.diff.height / 2)
+	case keymap.DiffDown:
+		m.diff.scroll(1)
+	case keymap.DiffUp:
+		m.diff.scroll(-1)
+	case keymap.DiffPageDown:
+		m.diff.scroll(m.diff.height - 1)
+	case keymap.DiffPageUp:
+		m.diff.scroll(-(m.diff.height - 1))
+	case keymap.DiffTop:
+		m.diff.toTop()
+	case keymap.DiffBottom:
+		m.diff.toBottom()
+	case keymap.NextHunk:
+		m.diff.nextHunk()
+	case keymap.PreviousHunk:
+		m.diff.previousHunk()
+	case keymap.NextFile:
+		return m, m.moveToFile(1)
+	case keymap.PreviousFile:
+		return m, m.moveToFile(-1)
+	case keymap.DiffBack:
+		if m.zoomed {
+			m.zoomed = false
+			m.layout()
+		} else {
 			m.focus = focusFiles
 		}
-	case focusFiles:
-		switch key {
-		case "j", "down":
-			return m, m.moveRow(m.files.cursor + 1)
-		case "k", "up":
-			return m, m.moveRow(m.files.cursor - 1)
-		case "g", "home":
-			return m, m.moveRow(0)
-		case "G", "end":
-			return m, m.moveRow(len(m.files.rows) - 1)
-		case "o":
-			if m.files.toggleFolder() {
-				return m, m.showSelection()
-			}
-		case "enter", "l", "right":
-			m.focus = focusDiff
-		case "esc":
-			if !m.files.filter.Empty() {
-				return m, m.setQuery(focusFiles, "")
-			}
-			m.focus = focusStack
-		case "h", "left":
-			m.focus = focusStack
-		case "ctrl+d":
-			m.diff.scroll(m.diff.height / 2)
-		case "ctrl+u":
-			m.diff.scroll(-m.diff.height / 2)
-		}
-	case focusDiff:
-		switch key {
-		case "j", "down":
-			m.diff.scroll(1)
-		case "k", "up":
-			m.diff.scroll(-1)
-		case "ctrl+d":
-			m.diff.scroll(m.diff.height / 2)
-		case "ctrl+u":
-			m.diff.scroll(-m.diff.height / 2)
-		case "space", "pgdown", "ctrl+f":
-			m.diff.scroll(m.diff.height - 1)
-		case "b", "pgup", "ctrl+b":
-			m.diff.scroll(-(m.diff.height - 1))
-		case "g", "home":
-			m.diff.toTop()
-		case "G", "end":
-			m.diff.toBottom()
-		case "n":
-			if m.diff.find.Empty() {
-				m.diff.nextHunk()
-			} else {
-				m.diff.nextMatch()
-			}
-		case "p":
-			m.diff.previousHunk()
-		case "N":
-			m.diff.previousMatch()
-		case "J":
-			return m, m.moveToFile(1)
-		case "K":
-			return m, m.moveToFile(-1)
-		case "esc":
-			if !m.diff.find.Empty() {
-				return m, m.setQuery(focusDiff, "")
-			}
-			if m.zoomed {
-				m.zoomed = false
-				m.layout()
-			} else {
-				m.focus = focusFiles
-			}
-		case "h", "left":
-			if m.zoomed {
-				m.zoomed = false
-				m.layout()
-			} else {
-				m.focus = focusFiles
-			}
-		}
+	case keymap.ClearSearch:
+		return m, m.setQuery(m.focus, "")
+	case keymap.NextMatch:
+		m.diff.nextMatch()
+	case keymap.PreviousMatch:
+		m.diff.previousMatch()
+	case keymap.MoveStacks:
+		return m, m.moveStacks()
+	case keymap.ResolveConflict:
+		return m, m.resolveConflict()
+	case keymap.ClosePlan:
+		m.stack.closePlan()
+		m.rebaseDone = false
+		m.cache.clear()
+		m.filesKey = ""
+		m.layout()
+		return m, m.showSelection()
 	}
 	return m, nil
+}
+
+var panelTables = [focusCount]keymap.Table{focusStack: keymap.InStack, focusFiles: keymap.InFiles, focusDiff: keymap.InDiff}
+
+func (m Model) action(key string) keymap.Action {
+	var tables []keymap.Table
+	if m.stack.plan != nil {
+		tables = append(tables, keymap.InPlan)
+	}
+	if !m.query(m.focus).Empty() {
+		tables = append(tables, keymap.InSearch)
+	}
+	for _, t := range append(tables, keymap.Anywhere, panelTables[m.focus]) {
+		if a := m.keys.Action(t, key); a != keymap.None && m.applies(a) {
+			return a
+		}
+	}
+	return keymap.None
+}
+
+func (m Model) applies(a keymap.Action) bool {
+	switch a {
+	case keymap.MoveStacks, keymap.ResolveConflict:
+		return m.focus == focusStack
+	case keymap.NextMatch, keymap.PreviousMatch:
+		return m.focus == focusDiff
+	}
+	return true
 }
 
 func (m *Model) stepBranch(by int) tea.Cmd {
@@ -614,7 +607,7 @@ func (m Model) screen() string {
 		return ""
 	}
 	if m.help {
-		return box("Keys · any key closes", helpLines(m.canSync()), m.width, m.height, true)
+		return box("Keys · any key closes", m.keyLines(m.width-2, m.height-2), m.width, m.height, true)
 	}
 	footer := m.footer()
 	if m.zoomed {
@@ -764,33 +757,80 @@ func (m Model) footer() string {
 	if m.notice != "" {
 		return viewedText.Render(" " + m.notice)
 	}
-	hints := map[focus]string{
-		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
-		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
-		focusDiff:  "j/k scroll · ^d/^u page · n/p hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
-	}
-	if m.canSync() {
-		hints[focusStack] = strings.Replace(hints[focusStack], "r refresh", "r refresh · S sync", 1)
-	}
-	if m.stack.plan != nil {
-		keys := []string{"j/k branch"}
-		switch n := m.stack.plan.StacksThatMove(); {
-		case m.rebaseDone:
-			keys = append(keys, "enter move the resolved stack")
-		case n > 0:
-			keys = append(keys, "enter move "+plural(n, "stack"))
-		}
-		if b, ok := m.stack.selected(); ok && !m.rebaseDone && m.stack.plan.StackHasConflict(b.Name) {
-			keys = append(keys, "c resolve the conflict")
-		}
-		hints[focusStack] = strings.Join(append(keys, "esc close", "tab panel", "? keys", "q quit"), " · ")
-	}
-	line := hints[m.focus]
+	line := m.hints()
 	if query := m.query(m.focus); !query.Empty() {
-		line = "/" + query.String() + " · " + m.searchResult(m.focus) + " · esc clear · " +
-			strings.Replace(line, "n/p hunk · ", "", 1)
+		line = joinHints("/"+query.String(), m.searchResult(m.focus), m.hint("clear", keymap.ClearSearch), line)
 	}
 	return dimText.Render(" " + truncate(line, max(0, m.width-2)))
+}
+
+func (m Model) hints() string {
+	switch {
+	case m.focus == focusStack && m.stack.plan != nil:
+		return m.planHints()
+	case m.focus == focusStack:
+		sync := ""
+		if m.canSync() {
+			sync = m.hint("sync", keymap.Sync)
+		}
+		return joinHints(m.hint("branch", keymap.StackDown, keymap.StackUp), m.hint("files", keymap.StackOpen),
+			m.hint("panel", keymap.NextPanel), m.hint("split", keymap.ToggleSplit), m.hint("zoom", keymap.ToggleZoom),
+			m.hint("refresh", keymap.Refresh), sync, m.hint("keys", keymap.Help), m.hint("quit", keymap.Quit))
+	case m.focus == focusFiles:
+		return joinHints(m.hint("move", keymap.FilesDown, keymap.FilesUp), m.hint("fold", keymap.FilesFold),
+			m.hint("diff", keymap.FilesOpen), m.hint("viewed", keymap.ToggleViewed),
+			m.hint("branch", keymap.PreviousBranch, keymap.NextBranch), m.hint("tree", keymap.ToggleTree),
+			m.hint("back", keymap.FilesBack), m.hint("split", keymap.ToggleSplit), m.hint("zoom", keymap.ToggleZoom),
+			m.hint("keys", keymap.Help))
+	}
+	hunk := m.hint("hunk", keymap.NextHunk, keymap.PreviousHunk)
+	if !m.diff.find.Empty() {
+		hunk = ""
+	}
+	return joinHints(m.hint("scroll", keymap.DiffDown, keymap.DiffUp), m.hint("page", keymap.DiffHalfPageDown, keymap.DiffHalfPageUp),
+		hunk, m.hint("file", keymap.NextFile, keymap.PreviousFile), m.hint("viewed", keymap.ToggleViewed),
+		m.hint("branch", keymap.PreviousBranch, keymap.NextBranch), m.hint("split", keymap.ToggleSplit),
+		m.hint("zoom", keymap.ToggleZoom), m.hint("keys", keymap.Help))
+}
+
+func (m Model) planHints() string {
+	move := ""
+	switch n := m.stack.plan.StacksThatMove(); {
+	case m.rebaseDone:
+		move = m.hint("move the resolved stack", keymap.MoveStacks)
+	case n > 0:
+		move = m.hint("move "+plural(n, "stack"), keymap.MoveStacks)
+	}
+	resolve := ""
+	if b, ok := m.stack.selected(); ok && !m.rebaseDone && m.stack.plan.StackHasConflict(b.Name) {
+		resolve = m.hint("resolve the conflict", keymap.ResolveConflict)
+	}
+	return joinHints(m.hint("branch", keymap.StackDown, keymap.StackUp), move, resolve, m.hint("close", keymap.ClosePlan),
+		m.hint("panel", keymap.NextPanel), m.hint("keys", keymap.Help), m.hint("quit", keymap.Quit))
+}
+
+func (m Model) hint(label string, actions ...keymap.Action) string {
+	var keys []string
+	for _, a := range actions {
+		if k := m.keys.Keys(a); len(k) > 0 {
+			keys = append(keys, shortKey(k[0]))
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	return strings.Join(keys, "/") + " " + label
+}
+
+func shortKey(key string) string {
+	if key == "enter" {
+		return "⏎"
+	}
+	return strings.Replace(key, "ctrl+", "^", 1)
+}
+
+func joinHints(hints ...string) string {
+	return strings.Join(slices.DeleteFunc(hints, func(h string) bool { return h == "" }), " · ")
 }
 
 func (m Model) searchResult(target focus) string {
@@ -803,7 +843,7 @@ func (m Model) searchResult(target focus) string {
 	case focusFiles:
 		return fmt.Sprintf("%d of %d files", m.files.matching(), len(m.files.files))
 	default:
-		return m.diff.findStatus() + " · n/N match"
+		return joinHints(m.diff.findStatus(), m.hint("match", keymap.NextMatch, keymap.PreviousMatch))
 	}
 }
 
@@ -819,53 +859,83 @@ func shellIn(p restack.Pending) *exec.Cmd {
 	return cmd
 }
 
-func helpLines(canSync bool) []string {
-	text := keysText
-	if canSync {
-		text = strings.Replace(text, "read the branches again\n",
-			"read the branches again\n    S            fetch the trunk and show the plan of a sync\n", 1)
-		text = strings.Replace(text, "go to the files of the branch\n", "go to the files of the branch\n"+syncKeysText, 1)
-	}
-	return strings.Split(strings.TrimPrefix(text, "\n"), "\n")
+type keySection struct {
+	title   string
+	actions []keymap.Action
 }
 
-const syncKeysText = `
-  Sync plan
-    enter        move the stacks that the plan moves
-    c            resolve the conflict of the stack in a shell
-    esc          close the plan
-`
+func (m Model) keySections() []keySection {
+	anywhere := keymap.Anywhere.Actions()
+	sections := []keySection{{"Anywhere", anywhere}, {"Stack", keymap.InStack.Actions()}}
+	if m.canSync() {
+		sections = append(sections, keySection{"Sync plan", keymap.InPlan.Actions()})
+	} else {
+		sections[0].actions = slices.DeleteFunc(anywhere, func(a keymap.Action) bool { return a == keymap.Sync })
+	}
+	return append(sections,
+		keySection{"Files", keymap.InFiles.Actions()},
+		keySection{"Diff", keymap.InDiff.Actions()},
+		keySection{"While a search is on", keymap.InSearch.Actions()})
+}
 
-const keysText = `
-  Anywhere
-    [ ]          previous or next branch; the same file stays selected when it can
-    tab          next panel (shift+tab: previous panel)
-    s            side by side or unified diff
-    z            diff on the full screen
-    v            mark the file viewed, then go to the next file
-    t            files as a tree or as a list of paths
-    /            search: filter the stack or the files, or find text in the diff
-    esc          clear the search of the panel
-    r            read the branches again
-    q            quit
+const columnGap = "   "
 
-  Stack
-    j/k  g/G     move between branches
-    enter        go to the files of the branch
+func (m Model) keyLines(width, height int) []string {
+	sections := m.keySections()
+	var left, right []string
+	for split := 1; split < len(sections); split++ {
+		l, r := m.keyColumn(sections[:split]), m.keyColumn(sections[split:])
+		if left == nil || max(len(l), len(r)) < max(len(left), len(right)) {
+			left, right = l, r
+		}
+	}
+	leftWidth, rightWidth := widest(left), widest(right)
+	single := m.keyColumn(sections)
+	if leftWidth+len(columnGap)+rightWidth > width {
+		if len(single) <= height {
+			return single
+		}
+		leftWidth = max(0, min(leftWidth, (width-len(columnGap))/2))
+	}
+	lines := make([]string, max(len(left), len(right)))
+	for i := range lines {
+		l, r := "", ""
+		if i < len(left) {
+			l = truncate(left[i], leftWidth)
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		lines[i] = l + strings.Repeat(" ", max(0, leftWidth-lipgloss.Width(l))) + columnGap + r
+	}
+	return lines
+}
 
-  Files
-    j/k  g/G     move between files and folders
-    o            fold or unfold the folder, or the folder that holds the file
-    enter        go to the diff
-    ctrl+d/u     scroll the diff
-    h  esc       back to the stack
+func (m Model) keyColumn(sections []keySection) []string {
+	width := 0
+	for _, s := range sections {
+		for _, a := range s.actions {
+			width = max(width, lipgloss.Width(strings.Join(m.keys.Keys(a), "  ")))
+		}
+	}
+	var lines []string
+	for i, s := range sections {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "  "+s.title)
+		for _, a := range s.actions {
+			keys := strings.Join(m.keys.Keys(a), "  ")
+			lines = append(lines, "    "+keys+strings.Repeat(" ", width-lipgloss.Width(keys))+"  "+a.About())
+		}
+	}
+	return lines
+}
 
-  Diff
-    j/k          scroll one line
-    ctrl+d/u     scroll half a page (space and b: a full page)
-    g/G          top or bottom
-    n/p          next or previous hunk
-    n/N          next or previous match while a search is on
-    J/K          next or previous file, past folded folders
-    h  esc       back to the files (in zoom, esc ends the zoom first)
-`
+func widest(lines []string) int {
+	width := 0
+	for _, line := range lines {
+		width = max(width, lipgloss.Width(line))
+	}
+	return width
+}
