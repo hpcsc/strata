@@ -440,6 +440,24 @@ func TestModel(t *testing.T) {
 			require.Contains(t, screen(moved), "line 30 holds the needle")
 			require.NotContains(t, screen(press(moved, "esc")), "/needle")
 		})
+
+		t.Run("N in the diff moves back to the previous match", func(t *testing.T) {
+			src := nestedFiles(t)
+			var lines []diff.Line
+			for i := 1; i <= 40; i++ {
+				text := fmt.Sprintf("line %d", i)
+				if i == 5 || i == 30 {
+					text += " holds the needle"
+				}
+				lines = append(lines, diff.Line{Kind: diff.Addition, Text: text, NewNumber: i})
+			}
+			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: []diff.Hunk{{NewStart: 1, NewLines: 40, Lines: lines}}}}
+
+			back := press(startWith(src), "enter", "enter", "/", "needle", "enter", "n", "N")
+
+			require.Contains(t, screen(back), "/needle · 1/2")
+			require.Contains(t, screen(back), "line 5 holds the needle")
+		})
 	})
 
 	t.Run("sync", func(t *testing.T) {
@@ -697,6 +715,35 @@ func TestModel(t *testing.T) {
 	})
 
 	t.Run("diff", func(t *testing.T) {
+		threeHunks := func(t *testing.T) modelSources {
+			t.Helper()
+			src := nestedFiles(t)
+			var hunks []diff.Hunk
+			for _, start := range []int{1, 100, 200} {
+				var lines []diff.Line
+				for i := start; i < start+30; i++ {
+					lines = append(lines, diff.Line{Kind: diff.Context, Text: fmt.Sprintf("line %d", i), OldNumber: i, NewNumber: i})
+				}
+				hunks = append(hunks, diff.Hunk{OldStart: start, OldLines: 30, NewStart: start, NewLines: 30, Lines: lines})
+			}
+			src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: hunks}}
+			return src
+		}
+
+		t.Run("n goes to the next hunk", func(t *testing.T) {
+			view := screen(press(startWith(threeHunks(t)), "enter", "enter", "n"))
+
+			require.Contains(t, view, "@@ -100,30 +100,30 @@")
+			require.NotContains(t, view, "@@ -1,30 +1,30 @@")
+		})
+
+		t.Run("p goes back to the previous hunk", func(t *testing.T) {
+			view := screen(press(startWith(threeHunks(t)), "enter", "enter", "n", "p"))
+
+			require.Contains(t, view, "@@ -1,30 +1,30 @@")
+			require.NotContains(t, view, "@@ -100,30 +100,30 @@")
+		})
+
 		t.Run("colours the diff with the highlighter's theme", func(t *testing.T) {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{

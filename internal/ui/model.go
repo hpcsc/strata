@@ -307,12 +307,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.diff.nextMatch()
 			}
+		case "p":
+			m.diff.previousHunk()
 		case "N":
-			if m.diff.find.Empty() {
-				m.diff.previousHunk()
-			} else {
-				m.diff.previousMatch()
-			}
+			m.diff.previousMatch()
 		case "J":
 			return m, m.moveToFile(1)
 		case "K":
@@ -766,7 +764,7 @@ func (m Model) footer() string {
 	hints := map[focus]string{
 		focusStack: "j/k branch · ⏎ files · tab panel · s split · z zoom · r refresh · ? keys · q quit",
 		focusFiles: "j/k move · o fold · ⏎ diff · v viewed · [ ] branch · t tree · h back · s split · z zoom · ? keys",
-		focusDiff:  "j/k scroll · ^d/^u page · n/N hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
+		focusDiff:  "j/k scroll · ^d/^u page · n/p hunk · J/K file · v viewed · [ ] branch · s split · z zoom · ? keys",
 	}
 	if m.canSync() {
 		hints[focusStack] = strings.Replace(hints[focusStack], "r refresh", "r refresh · S sync", 1)
@@ -787,7 +785,7 @@ func (m Model) footer() string {
 	line := hints[m.focus]
 	if query := m.query(m.focus); !query.Empty() {
 		line = "/" + query.String() + " · " + m.searchResult(m.focus) + " · esc clear · " +
-			strings.Replace(line, "n/N hunk · ", "", 1)
+			strings.Replace(line, "n/p hunk · ", "", 1)
 	}
 	return dimText.Render(" " + truncate(line, max(0, m.width-2)))
 }
@@ -863,7 +861,8 @@ const keysText = `
     j/k          scroll one line
     ctrl+d/u     scroll half a page (space and b: a full page)
     g/G          top or bottom
-    n/N          next or previous hunk, or match while a search is on
+    n/p          next or previous hunk
+    n/N          next or previous match while a search is on
     J/K          next or previous file, past folded folders
     h  esc       back to the files (in zoom, esc ends the zoom first)
 `

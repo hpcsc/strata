@@ -125,7 +125,7 @@ Each command installs the latest build of its channel when this build is a diffe
 | | `ctrl+d` `ctrl+u` | Scroll the diff. |
 | Diff | `j` `k` | Scroll one line. |
 | | `ctrl+d` `ctrl+u` | Scroll half a page. `space` and `b` scroll a full page. |
-| | `n` `N` | Go to the next or previous hunk. While a search is on, go to the next or previous match. |
+| | `n` `p` | Go to the next or previous hunk. While a search is on, `n` and `N` go to the next or previous match. |
 | | `J` `K` | Go to the next or previous file. The files in a folded folder do not count. |
 | | `esc` | Go back to the files. In zoom, `esc` ends the zoom first. |
 
