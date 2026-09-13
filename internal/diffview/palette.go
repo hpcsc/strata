@@ -21,54 +21,89 @@ type style struct {
 	dim    bool
 }
 
+type palette struct {
+	text           rgb
+	number         rgb
+	separator      rgb
+	hunk           rgb
+	hunkBackground rgb
+	addedMarker    rgb
+	deletedMarker  rgb
+	addedLine      rgb
+	addedWord      rgb
+	deletedLine    rgb
+	deletedWord    rgb
+	note           rgb
+	emptySide      rgb
+}
+
 var (
-	textColor       = rgb{216, 222, 233, true}
-	numberColor     = rgb{76, 86, 106, true}
-	separatorColor  = rgb{59, 66, 82, true}
-	hunkColor       = rgb{129, 161, 193, true}
-	hunkBackground  = rgb{43, 48, 59, true}
-	addedMarker     = rgb{163, 190, 140, true}
-	deletedMarker   = rgb{191, 97, 106, true}
-	addedLine       = rgb{33, 53, 40, true}
-	addedWord       = rgb{47, 94, 62, true}
-	deletedLine     = rgb{58, 34, 39, true}
-	deletedWord     = rgb{112, 46, 56, true}
-	noteColor       = rgb{136, 192, 208, true}
-	emptySideFiller = rgb{35, 39, 47, true}
 	foundText       = rgb{46, 52, 64, true}
 	foundBackground = rgb{235, 203, 139, true}
+	defaultInserted = rgb{46, 160, 67, true}
+	defaultDeleted  = rgb{248, 81, 73, true}
+	white           = rgb{255, 255, 255, true}
+	black           = rgb{0, 0, 0, true}
+	lineTint        = tint{lightness: 0.1, chroma: 0.4}
+	wordTint        = tint{lightness: 0.3, chroma: 0.75}
 )
+
+func newPalette(t syntax.Theme) palette {
+	background := fromSyntax(t.Background).or(white)
+	ink := fromSyntax(t.Text).or(black)
+	if background.dark() {
+		ink = fromSyntax(t.Text).or(white)
+	}
+	inserted := fromSyntax(t.Inserted).or(defaultInserted)
+	deleted := fromSyntax(t.Deleted).or(defaultDeleted)
+	number := fromSyntax(t.LineNumber).or(blend(ink, background, 0.5))
+	return palette{
+		text:           fromSyntax(t.Text),
+		number:         number,
+		separator:      blend(number, background, 0.5),
+		hunk:           fromSyntax(t.Subheading),
+		hunkBackground: blend(ink, background, 0.08),
+		addedMarker:    inserted,
+		deletedMarker:  deleted,
+		addedLine:      lineTint.of(inserted, background),
+		addedWord:      wordTint.of(inserted, background),
+		deletedLine:    lineTint.of(deleted, background),
+		deletedWord:    wordTint.of(deleted, background),
+		note:           fromSyntax(t.Comment),
+		emptySide:      blend(ink, background, 0.04),
+	}
+}
 
 const reset = "\x1b[0m"
 
-func lineBackground(kind diff.LineKind) rgb {
+func (p palette) lineBackground(kind diff.LineKind) rgb {
 	switch kind {
 	case diff.Addition:
-		return addedLine
+		return p.addedLine
 	case diff.Deletion:
-		return deletedLine
+		return p.deletedLine
 	default:
 		return rgb{}
 	}
 }
 
-func wordBackground(kind diff.LineKind) rgb {
+func (p palette) wordBackground(kind diff.LineKind) rgb {
 	switch kind {
 	case diff.Addition:
-		return addedWord
+		return p.addedWord
 	case diff.Deletion:
-		return deletedWord
+		return p.deletedWord
 	default:
 		return rgb{}
 	}
 }
 
-func marker(kind diff.LineKind) (string, rgb) {
+func (p palette) marker(kind diff.LineKind) (string, rgb) {
 	switch kind {
 	case diff.Addition:
-		return "+", addedMarker
+		return "+", p.addedMarker
 	case diff.Deletion:
-		return "-", deletedMarker
+		return "-", p.deletedMarker
 	default:
 		return " ", rgb{}
 	}
@@ -76,6 +111,13 @@ func marker(kind diff.LineKind) (string, rgb) {
 
 func fromSyntax(c syntax.Color) rgb {
 	return rgb{c.R, c.G, c.B, c.Set}
+}
+
+func (c rgb) or(fallback rgb) rgb {
+	if c.set {
+		return c
+	}
+	return fallback
 }
 
 func sgr(s style) string {

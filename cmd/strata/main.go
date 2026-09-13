@@ -53,7 +53,7 @@ func newCommand(syncErr error) *cli.Command {
 			&cli.BoolFlag{Name: "remote", Aliases: []string{"r"}, Usage: "review the remote's branches, such as a teammate's stack"},
 			&cli.StringFlag{Name: "trunk", Usage: "the branch stacks sit on (default: origin/HEAD, origin/main, origin/master, main or master)"},
 			&cli.BoolFlag{Name: "list", Aliases: []string{"l"}, Usage: "print the stack and exit"},
-			&cli.StringFlag{Name: "theme", Value: "nord", Usage: "chroma style for syntax highlighting"},
+			&cli.StringFlag{Name: "theme", Value: "nord", Usage: "chroma style for syntax highlighting and diff colours"},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return run(ctx, cmd, syncErr)

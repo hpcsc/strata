@@ -40,6 +40,7 @@ strata refs/heads/team/    # only the branches that match a for-each-ref pattern
 strata --remote            # the branches on origin, for example the stack of a teammate
 strata --list              # print the stack and exit
 strata --trunk develop     # use a trunk other than origin/HEAD, origin/main or main
+strata --theme github      # colour the code and the diff with a chroma style other than nord
 ```
 
 `task demo` opens strata on a throwaway repository with two stacks. The script deletes the repository when

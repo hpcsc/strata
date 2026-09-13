@@ -3,6 +3,7 @@
 package diffview_test
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -42,14 +43,37 @@ func TestRender(t *testing.T) {
 			require.Equal(t, width, ansi.StringWidth(l), "row %d: %q", i, ansi.Strip(l))
 		}
 	}
-	lastBackground := regexp.MustCompile(`48;2;\d+;\d+;\d+`)
-	backgroundOf := func(t *testing.T, row, word string) string {
+	lastCode := func(t *testing.T, code *regexp.Regexp, row, word string) string {
 		t.Helper()
 		at := strings.Index(row, word)
 		require.NotEqual(t, -1, at, "%q is not in the row", word)
-		codes := lastBackground.FindAllString(row[:at], -1)
-		require.NotEmpty(t, codes, "%q has no background", word)
+		codes := code.FindAllString(row[:at], -1)
+		require.NotEmpty(t, codes, "%q has no %v code", word, code)
 		return codes[len(codes)-1]
+	}
+	backgroundOf := func(t *testing.T, row, word string) string {
+		t.Helper()
+		return lastCode(t, regexp.MustCompile(`48;2;\d+;\d+;\d+`), row, word)
+	}
+	foregroundOf := func(t *testing.T, row, word string) string {
+		t.Helper()
+		return lastCode(t, regexp.MustCompile(`38;2;\d+;\d+;\d+`), row, word)
+	}
+	strongestChannel := func(t *testing.T, code string) string {
+		t.Helper()
+		var r, g, b int
+		_, err := fmt.Sscanf(code[len("48;2;"):], "%d;%d;%d", &r, &g, &b)
+		require.NoError(t, err)
+		switch {
+		case r > g && r > b:
+			return "red"
+		case g > r && g > b:
+			return "green"
+		case b > r && b > g:
+			return "blue"
+		default:
+			return "none"
+		}
 	}
 
 	t.Run("unified", func(t *testing.T) {
@@ -179,6 +203,58 @@ func TestRender(t *testing.T) {
 			page := diffview.Render(diffview.Source{Patch: patch}, diffview.Options{Width: 40})
 
 			require.Equal(t, []string{"  binary file changed"}, plain(page.Lines))
+		})
+	})
+
+	t.Run("colours", func(t *testing.T) {
+		rgb := func(r, g, b uint8) syntax.Color {
+			return syntax.Color{R: r, G: g, B: b, Set: true}
+		}
+		source := diffview.Source{Patch: replaced("return price * qty", "return price * quantity")}
+
+		t.Run("marks deleted and added lines in the theme's colours for them", func(t *testing.T) {
+			theme := syntax.Theme{Inserted: rgb(163, 190, 140), Deleted: rgb(191, 97, 106)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme})
+
+			require.Equal(t, []string{"38;2;191;97;106", "38;2;163;190;140"},
+				[]string{foregroundOf(t, page.Lines[2], "-"), foregroundOf(t, page.Lines[3], "+")})
+		})
+
+		t.Run("tints an added line with the theme's colour for added lines", func(t *testing.T) {
+			theme := syntax.Theme{Background: rgb(0, 0, 0), Inserted: rgb(40, 80, 220)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme})
+
+			require.Equal(t, "blue", strongestChannel(t, backgroundOf(t, page.Lines[3], "return")))
+		})
+
+		t.Run("keeps the hue of a changed line's colour over a background of another hue", func(t *testing.T) {
+			theme := syntax.Theme{Background: rgb(46, 52, 64), Inserted: rgb(163, 190, 140), Deleted: rgb(191, 97, 106)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme})
+
+			require.Equal(t, []string{"red", "green"}, []string{
+				strongestChannel(t, backgroundOf(t, page.Lines[2], "return")),
+				strongestChannel(t, backgroundOf(t, page.Lines[3], "return")),
+			})
+		})
+
+		t.Run("tints deleted lines red and added lines green when the theme has no colours for them", func(t *testing.T) {
+			page := diffview.Render(source, diffview.Options{Width: 60})
+
+			require.Equal(t, []string{"red", "green"}, []string{
+				strongestChannel(t, backgroundOf(t, page.Lines[2], "return")),
+				strongestChannel(t, backgroundOf(t, page.Lines[3], "return")),
+			})
+		})
+
+		t.Run("puts the hunk header in the theme's subheading colour", func(t *testing.T) {
+			theme := syntax.Theme{Subheading: rgb(136, 192, 208)}
+
+			page := diffview.Render(source, diffview.Options{Width: 60, Theme: theme})
+
+			require.Equal(t, "38;2;136;192;208", foregroundOf(t, page.Lines[0], "@@"))
 		})
 	})
 }

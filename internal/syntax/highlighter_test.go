@@ -61,4 +61,42 @@ func TestHighlighter(t *testing.T) {
 			require.Equal(t, "second", text(lines[1]))
 		})
 	})
+
+	t.Run("theme", func(t *testing.T) {
+		rgb := func(r, g, b uint8) syntax.Color {
+			return syntax.Color{R: r, G: g, B: b, Set: true}
+		}
+
+		t.Run("takes the colours for text, changed lines, hunk headers, line numbers and comments from the style", func(t *testing.T) {
+			theme := syntax.NewHighlighter("catppuccin-mocha").Theme()
+
+			require.Equal(t, syntax.Theme{
+				Text:       rgb(0xcd, 0xd6, 0xf4),
+				Background: rgb(0x1e, 0x1e, 0x2e),
+				Inserted:   rgb(0xa6, 0xe3, 0xa1),
+				Deleted:    rgb(0xf3, 0x8b, 0xa8),
+				Subheading: rgb(0xfa, 0xb3, 0x87),
+				LineNumber: rgb(0x7f, 0x84, 0x9c),
+				Comment:    rgb(0x6c, 0x70, 0x86),
+			}, theme)
+		})
+
+		t.Run("takes a changed line's colour from its background when the style colours that instead of the text", func(t *testing.T) {
+			theme := syntax.NewHighlighter("gruvbox").Theme()
+
+			require.Equal(t, []syntax.Color{rgb(0xb8, 0xbb, 0x26), rgb(0xfb, 0x49, 0x34)}, []syntax.Color{theme.Inserted, theme.Deleted})
+		})
+
+		t.Run("gives no colour for a changed line the style marks in its plain text colour", func(t *testing.T) {
+			theme := syntax.NewHighlighter("ashen").Theme()
+
+			require.Equal(t, syntax.Color{}, theme.Inserted)
+		})
+
+		t.Run("gives no colours for changed lines when the style has none", func(t *testing.T) {
+			theme := syntax.NewHighlighter("vs").Theme()
+
+			require.Equal(t, []syntax.Color{{}, {}}, []syntax.Color{theme.Inserted, theme.Deleted})
+		})
+	})
 }

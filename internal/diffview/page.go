@@ -10,7 +10,8 @@ type Options struct {
 	Width int
 	Split bool
 	// Find marks the text that matches it.
-	Find search.Query
+	Find  search.Query
+	Theme syntax.Theme
 }
 
 // Source is a patch with the highlighted text of the file before and after
@@ -34,7 +35,7 @@ type Page struct {
 const minWidth = 24
 
 func Render(src Source, opts Options) Page {
-	r := newRenderer(src, max(opts.Width, minWidth), opts.Find)
+	r := newRenderer(src, max(opts.Width, minWidth), opts.Find, opts.Theme)
 	if summary := src.Patch.Summary(); summary != "" {
 		return Page{Lines: []string{r.note(summary)}}
 	}

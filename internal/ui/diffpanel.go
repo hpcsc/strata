@@ -5,6 +5,7 @@ import (
 
 	"github.com/hpcsc/strata/internal/diffview"
 	"github.com/hpcsc/strata/internal/search"
+	"github.com/hpcsc/strata/internal/syntax"
 )
 
 type diffPanel struct {
@@ -18,6 +19,7 @@ type diffPanel struct {
 	width     int
 	height    int
 	find      search.Query
+	theme     syntax.Theme
 	// match is the index in page.Matches of the match that n and N last
 	// moved to, or -1.
 	match int
@@ -53,7 +55,7 @@ func (p *diffPanel) render(split bool) {
 	if pageKey == p.pageKey {
 		return
 	}
-	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: split, Find: p.find}), pageKey
+	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: split, Find: p.find, Theme: p.theme}), pageKey
 	p.scroll(0)
 }
 

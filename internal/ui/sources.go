@@ -22,6 +22,7 @@ type DiffLoader interface {
 
 type Highlighter interface {
 	Lines(path, content string) [][]syntax.Span
+	Theme() syntax.Theme
 }
 
 type ViewedMarks interface {

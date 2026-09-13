@@ -84,6 +84,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources) Model {
 		cache:   newCache(ctx, sources),
 		stack:   newStackPanel(tree),
 		files:   newFilesPanel(sources.Viewed),
+		diff:    diffPanel{theme: sources.Highlighter.Theme()},
 		split:   true,
 	}
 	m.initial = m.showSelection()

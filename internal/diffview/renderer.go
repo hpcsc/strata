@@ -17,16 +17,17 @@ type renderer struct {
 	width       int
 	numberWidth int
 	find        search.Query
+	palette     palette
 }
 
-func newRenderer(src Source, width int, find search.Query) renderer {
+func newRenderer(src Source, width int, find search.Query, theme syntax.Theme) renderer {
 	widest := 1
 	for _, h := range src.Patch.Hunks {
 		for _, l := range h.Lines {
 			widest = max(widest, len(strconv.Itoa(max(l.OldNumber, l.NewNumber))))
 		}
 	}
-	return renderer{src: src, width: width, numberWidth: widest, find: find}
+	return renderer{src: src, width: width, numberWidth: widest, find: find, palette: newPalette(theme)}
 }
 
 // unified returns the rows of a hunk, and the index of each row that starts
@@ -42,7 +43,7 @@ func (r renderer) unified(h diff.Hunk) ([]string, []int) {
 			matches = append(matches, len(out))
 		}
 		for k, row := range wrap(layOut(l.Text, r.spans(l), marks[i], found), contentWidth) {
-			out = append(out, r.unifiedGutter(l, k == 0)+paint(row, contentWidth, l.Kind))
+			out = append(out, r.unifiedGutter(l, k == 0)+r.paint(row, contentWidth, l.Kind))
 		}
 	}
 	return out, matches
@@ -50,13 +51,13 @@ func (r renderer) unified(h diff.Hunk) ([]string, []int) {
 
 func (r renderer) unifiedGutter(l diff.Line, first bool) string {
 	old, new := number(l.OldNumber), number(l.NewNumber)
-	sign, signColor := marker(l.Kind)
+	sign, signColor := r.palette.marker(l.Kind)
 	if !first {
 		old, new, sign = "", "", " "
 	}
-	return paintText(fmt.Sprintf("%*s %*s ", r.numberWidth, old, r.numberWidth, new), style{fg: numberColor}) +
-		paintText("│", style{fg: separatorColor}) +
-		paintText(sign+" ", style{fg: signColor, bg: lineBackground(l.Kind)})
+	return paintText(fmt.Sprintf("%*s %*s ", r.numberWidth, old, r.numberWidth, new), style{fg: r.palette.number}) +
+		paintText("│", style{fg: r.palette.separator}) +
+		paintText(sign+" ", style{fg: signColor, bg: r.palette.lineBackground(l.Kind)})
 }
 
 // split returns the rows of a hunk side by side, and the index of each row
@@ -65,7 +66,7 @@ func (r renderer) split(h diff.Hunk) ([]string, []int) {
 	marks := changedWords(h.Lines)
 	leftWidth := (r.width - 1) / 2
 	rightWidth := r.width - 1 - leftWidth
-	separator := paintText("│", style{fg: separatorColor})
+	separator := paintText("│", style{fg: r.palette.separator})
 	var out []string
 	var matches []int
 	for _, pair := range sideBySide(h.Lines) {
@@ -98,7 +99,7 @@ func (r renderer) found(l diff.Line) []diff.Range {
 // the other side wraps onto more rows.
 func (r renderer) sideRows(lines []diff.Line, index int, marks [][]diff.Range, width int, before bool) ([]string, style) {
 	if index < 0 {
-		return nil, style{bg: emptySideFiller}
+		return nil, style{bg: r.palette.emptySide}
 	}
 	l := lines[index]
 	n := l.NewNumber
@@ -112,10 +113,10 @@ func (r renderer) sideRows(lines []diff.Line, index int, marks [][]diff.Range, w
 		if k == 0 {
 			label = number(n)
 		}
-		gutter := paintText(fmt.Sprintf("%*s ", r.numberWidth, label), style{fg: numberColor, bg: lineBackground(l.Kind)})
-		out = append(out, gutter+paint(row, contentWidth, l.Kind))
+		gutter := paintText(fmt.Sprintf("%*s ", r.numberWidth, label), style{fg: r.palette.number, bg: r.palette.lineBackground(l.Kind)})
+		out = append(out, gutter+r.paint(row, contentWidth, l.Kind))
 	}
-	return out, style{bg: lineBackground(l.Kind)}
+	return out, style{bg: r.palette.lineBackground(l.Kind)}
 }
 
 func (r renderer) hunkHeader(h diff.Hunk) string {
@@ -123,11 +124,11 @@ func (r renderer) hunkHeader(h diff.Hunk) string {
 	if h.Section != "" {
 		text += " " + h.Section
 	}
-	return fill(runewidth.Truncate(text, r.width, "…"), r.width, style{fg: hunkColor, bg: hunkBackground})
+	return fill(runewidth.Truncate(text, r.width, "…"), r.width, style{fg: r.palette.hunk, bg: r.palette.hunkBackground})
 }
 
 func (r renderer) note(text string) string {
-	return fill(runewidth.Truncate("  "+text, r.width, "…"), r.width, style{fg: noteColor, italic: true})
+	return fill(runewidth.Truncate("  "+text, r.width, "…"), r.width, style{fg: r.palette.note, italic: true})
 }
 
 func (r renderer) spans(l diff.Line) []syntax.Span {
@@ -189,13 +190,13 @@ func changedWords(lines []diff.Line) [][]diff.Range {
 	return marks
 }
 
-func paint(row []cell, width int, kind diff.LineKind) string {
+func (r renderer) paint(row []cell, width int, kind diff.LineKind) string {
 	var b strings.Builder
-	background, word := lineBackground(kind), wordBackground(kind)
+	background, word := r.palette.lineBackground(kind), r.palette.wordBackground(kind)
 	used := 0
 	last := style{}
 	for i, c := range row {
-		s := style{fg: textColor, bg: background, bold: c.bold, italic: c.italic}
+		s := style{fg: r.palette.text, bg: background, bold: c.bold, italic: c.italic}
 		if c.color.Set {
 			s.fg = fromSyntax(c.color)
 		}

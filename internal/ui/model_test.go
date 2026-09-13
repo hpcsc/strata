@@ -57,10 +57,16 @@ func (m memoryDiffs) Contents(context.Context, diff.File) (string, string, error
 	return "", "", nil
 }
 
-type plainText struct{}
+type plainText struct {
+	theme syntax.Theme
+}
 
 func (plainText) Lines(string, string) [][]syntax.Span {
 	return nil
+}
+
+func (p plainText) Theme() syntax.Theme {
+	return p.theme
 }
 
 type memorySync struct {
@@ -687,6 +693,24 @@ func TestModel(t *testing.T) {
 
 			require.NotNil(t, first)
 			require.Nil(t, second)
+		})
+	})
+
+	t.Run("diff", func(t *testing.T) {
+		t.Run("colours the diff with the highlighter's theme", func(t *testing.T) {
+			tree, files := stackOf()
+			m := ui.New(context.Background(), tree, ui.Sources{
+				Tree:        memoryTree{tree: tree},
+				Diffs:       memoryDiffs{files: files},
+				Highlighter: plainText{theme: syntax.Theme{Inserted: syntax.Color{R: 10, G: 200, B: 30, Set: true}}},
+				Viewed:      memoryViewed{},
+			})
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+
+			view := press(settle(sized, m.Init()), "enter", "s").View().Content
+
+			require.Contains(t, view, "38;2;10;200;30")
 		})
 	})
 
