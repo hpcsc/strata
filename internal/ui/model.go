@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -56,14 +57,13 @@ type resolveStarted struct {
 type shellExited struct{}
 
 type deleteChecked struct {
-	branches []stack.Branch
-	trunkHas map[string]bool
-	err      error
+	deletions []stack.Deletion
+	err       error
 }
 
 type branchesDeleted struct {
-	branches []stack.Branch
-	err      error
+	deletions []stack.Deletion
+	err       error
 }
 
 type Options struct {
@@ -199,14 +199,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.stack.deletion = &deletion{branches: msg.branches, trunkHas: msg.trunkHas}
+		m.stack.deletion = msg.deletions
 		return m, nil
 	case branchesDeleted:
 		m.work = nil
 		if msg.err != nil {
 			return m, m.readTree(msg.err.Error(), "")
 		}
-		return m, m.readTree("", deletedReport(msg.branches))
+		return m, m.readTree("", deletedReport(msg.deletions))
 	}
 	if m.cache.store(msg) {
 		return m, m.showSelection()
@@ -228,12 +228,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if m.stack.deletion != nil {
-		branches := m.stack.deletion.branches
+		deletions := m.stack.deletion
 		m.stack.deletion = nil
 		if key != "y" {
 			return m, nil
 		}
-		return m, m.deleteBranches(branches)
+		return m, m.deleteBranches(deletions)
 	}
 
 	switch m.action(key) {
@@ -585,27 +585,43 @@ func (m *Model) checkDelete() tea.Cmd {
 	}
 	ctx, deleter := m.ctx, m.sources.Deleter
 	return m.startWork("reading what the delete loses", func(func(string)) tea.Msg {
-		trunkHas, err := deleter.TrunkHas(ctx, branches)
-		return deleteChecked{branches: branches, trunkHas: trunkHas, err: err}
+		deletions, err := deleter.Check(ctx, branches)
+		return deleteChecked{deletions: deletions, err: err}
 	})
 }
 
-func (m *Model) deleteBranches(branches []stack.Branch) tea.Cmd {
+func (m *Model) deleteBranches(deletions []stack.Deletion) tea.Cmd {
 	ctx, deleter := m.ctx, m.sources.Deleter
-	return m.startWork("deleting "+plural(len(branches), "branch"), func(func(string)) tea.Msg {
-		return branchesDeleted{branches: branches, err: deleter.Delete(ctx, branches)}
+	return m.startWork("deleting "+plural(len(deletions), "branch"), func(func(string)) tea.Msg {
+		return branchesDeleted{deletions: deletions, err: deleter.Delete(ctx, deletions)}
 	})
 }
 
-func deletedReport(branches []stack.Branch) string {
-	parts := make([]string, len(branches))
-	for i, b := range branches {
-		parts[i] = b.Name + " (was " + b.Tip[:min(7, len(b.Tip))] + ")"
+func deletedReport(deletions []stack.Deletion) string {
+	var branches, worktrees []string
+	for _, del := range deletions {
+		b := del.Branch
+		branches = append(branches, b.Name+" (was "+b.Tip[:min(7, len(b.Tip))]+")")
+		if del.RemovesWorktree != "" {
+			worktrees = append(worktrees, filepath.Base(del.RemovesWorktree))
+		}
 	}
-	if len(parts) == 1 {
-		return "Deleted " + parts[0] + "."
+	report := "Deleted " + joinAnd(branches) + "."
+	switch len(worktrees) {
+	case 0:
+	case 1:
+		report += " Removed worktree " + worktrees[0] + "."
+	default:
+		report += " Removed worktrees " + joinAnd(worktrees) + "."
 	}
-	return "Deleted " + strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1] + "."
+	return report
+}
+
+func joinAnd(parts []string) string {
+	if len(parts) < 2 {
+		return strings.Join(parts, "")
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 }
 
 func moveReport(stack string, result restack.Result) (status, notice string) {
@@ -725,7 +741,7 @@ func (m Model) screen() string {
 	case m.stack.plan != nil:
 		stackTitle = "Stack · sync plan"
 	case m.stack.deletion != nil:
-		stackTitle = "Stack · delete " + plural(len(m.stack.deletion.branches), "branch")
+		stackTitle = "Stack · delete " + plural(len(m.stack.deletion), "branch")
 	}
 	stackBox := box(stackTitle, m.stack.lines(m.width-2, m.focus == focusStack, m.progress), m.width, m.stackHeight, m.focus == focusStack)
 	filesBox := box(m.filesTitle(), m.files.lines(m.filesWidth-2, m.focus == focusFiles), m.filesWidth, bottom, m.focus == focusFiles)
@@ -869,7 +885,11 @@ func (m Model) footer() string {
 		return " " + selectedText.Render(spinner[m.spins%len(spinner)]) + " " + truncate(m.work.text()+"…", max(0, m.width-4))
 	}
 	if d := m.stack.deletion; d != nil {
-		return warningText.Render(" y delete " + plural(len(d.branches), "branch") + " · any other key cancels")
+		style := warningText
+		if d.lostFiles() > 0 {
+			style = errorText
+		}
+		return style.Render(" " + d.prompt())
 	}
 	if m.notice != "" {
 		return viewedText.Render(" " + m.notice)

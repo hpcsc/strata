@@ -41,8 +41,8 @@ type Syncer interface {
 }
 
 type Deleter interface {
-	TrunkHas(ctx context.Context, branches []stack.Branch) (map[string]bool, error)
-	Delete(ctx context.Context, branches []stack.Branch) error
+	Check(ctx context.Context, branches []stack.Branch) ([]stack.Deletion, error)
+	Delete(ctx context.Context, deletions []stack.Deletion) error
 }
 
 type Sources struct {

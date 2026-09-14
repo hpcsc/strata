@@ -15,7 +15,6 @@ func TestTree(t *testing.T) {
 			return stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{
 				{Name: "events", Parent: "origin/main"},
 				{Name: "handler", Parent: "events", Level: 1},
-				{Name: "billing", Parent: "origin/main", Worktree: "/work/billing"},
 				{Name: "api", Parent: "origin/main", RebaseWorktree: "/work/api"},
 			}}
 		}
@@ -24,12 +23,6 @@ func TestTree(t *testing.T) {
 			err := tree().CheckDelete([]string{"events"})
 
 			require.EqualError(t, err, "handler sits on events: mark handler too")
-		})
-
-		t.Run("refuses a branch that a worktree has checked out", func(t *testing.T) {
-			err := tree().CheckDelete([]string{"billing"})
-
-			require.EqualError(t, err, "billing is checked out in /work/billing: switch that worktree to another branch first")
 		})
 
 		t.Run("refuses a branch that a rebase uses", func(t *testing.T) {

@@ -90,8 +90,6 @@ func (t Tree) CheckDelete(names []string) error {
 		switch {
 		case deleting[b.Name] && b.RebaseWorktree != "":
 			return rebaseError(b.Name, b.RebaseWorktree)
-		case deleting[b.Name] && b.Worktree != "":
-			return checkedOutError(b.Name, b.Worktree)
 		// strata finds parents from the commits, so a child that stays then
 		// shows the commits of its deleted parent as its own
 		case deleting[b.Parent] && !deleting[b.Name]:
@@ -99,10 +97,6 @@ func (t Tree) CheckDelete(names []string) error {
 		}
 	}
 	return nil
-}
-
-func checkedOutError(branch, worktree string) error {
-	return fmt.Errorf("%s is checked out in %s: switch that worktree to another branch first", branch, worktree)
 }
 
 func rebaseError(branch, worktree string) error {

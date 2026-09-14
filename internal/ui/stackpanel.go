@@ -19,7 +19,7 @@ type stackPanel struct {
 	treeBeforePlan stack.Tree
 	filter         search.Query
 	marked         map[string]bool
-	deletion       *deletion
+	deletion       deletion
 	// shown holds the indexes in tree.Branches that show: the branches that
 	// match the filter or are marked, and the branches they sit on.
 	shown  []int
@@ -28,20 +28,57 @@ type stackPanel struct {
 	height int
 }
 
-type deletion struct {
-	branches []stack.Branch
-	trunkHas map[string]bool
-}
+type deletion []stack.Deletion
 
-func (d deletion) includes(name string) bool {
-	return slices.ContainsFunc(d.branches, func(b stack.Branch) bool { return b.Name == name })
-}
-
-func (d deletion) loss(b stack.Branch) string {
-	if d.trunkHas[b.Name] {
-		return viewedText.Render("the trunk has its changes")
+func (d deletion) of(name string) (stack.Deletion, bool) {
+	i := slices.IndexFunc(d, func(del stack.Deletion) bool { return del.Branch.Name == name })
+	if i < 0 {
+		return stack.Deletion{}, false
 	}
-	return warningText.Render("loses " + plural(b.Commits, "commit"))
+	return d[i], true
+}
+
+func (d deletion) lostFiles() int {
+	n := 0
+	for _, del := range d {
+		n += len(del.LostFiles)
+	}
+	return n
+}
+
+func (d deletion) prompt() string {
+	worktrees := 0
+	for _, del := range d {
+		if del.RemovesWorktree != "" {
+			worktrees++
+		}
+	}
+	parts := []string{"delete " + plural(len(d), "branch")}
+	if worktrees > 0 {
+		parts = append(parts, "remove "+plural(worktrees, "worktree"))
+	}
+	if n := d.lostFiles(); n > 0 {
+		parts = append(parts, "lose "+plural(n, "changed file"))
+	}
+	return "y " + joinAnd(parts) + " · any other key cancels"
+}
+
+func lossText(del stack.Deletion) string {
+	text := warningText.Render("loses " + plural(del.Branch.Commits, "commit"))
+	if del.TrunkHas {
+		text = viewedText.Render("the trunk has its changes")
+	}
+	folder := filepath.Base(del.RemovesWorktree)
+	switch {
+	case del.RemovesWorktree == "":
+		return text
+	case del.WorktreeGone:
+		return text + dimText.Render(" · forgets worktree "+folder+", whose folder is gone")
+	case len(del.LostFiles) > 0:
+		return text + errorText.Render(" · removes worktree "+folder+" and loses "+
+			plural(len(del.LostFiles), "changed file")+": "+strings.Join(del.LostFiles, ", "))
+	}
+	return text + warningText.Render(" · removes worktree "+folder)
 }
 
 func newStackPanel(tree stack.Tree) stackPanel {
@@ -297,8 +334,8 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 			rows = append(rows, gutter+label+"  "+outcomeStyle(o).Render(o.Text()))
 			continue
 		}
-		if p.deletion != nil && p.deletion.includes(b.Name) {
-			rows = append(rows, gutter+label+"  "+p.deletion.loss(b))
+		if del, ok := p.deletion.of(b.Name); ok {
+			rows = append(rows, gutter+label+"  "+lossText(del))
 			continue
 		}
 		stats := dimText.Render(fmt.Sprintf("%-11s %-9s", plural(b.Commits, "commit"), plural(b.Files, "file"))) +

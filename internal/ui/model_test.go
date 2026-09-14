@@ -133,19 +133,29 @@ func (m *memorySync) Finish(context.Context) (restack.Result, error) {
 }
 
 type memoryDeleter struct {
-	trunkHas map[string]bool
-	err      error
-	deleted  [][]string
+	deletions map[string]stack.Deletion
+	checkErr  error
+	err       error
+	deleted   [][]string
 }
 
-func (m *memoryDeleter) TrunkHas(context.Context, []stack.Branch) (map[string]bool, error) {
-	return m.trunkHas, nil
-}
-
-func (m *memoryDeleter) Delete(_ context.Context, branches []stack.Branch) error {
-	var names []string
+func (m *memoryDeleter) Check(_ context.Context, branches []stack.Branch) ([]stack.Deletion, error) {
+	if m.checkErr != nil {
+		return nil, m.checkErr
+	}
+	var deletions []stack.Deletion
 	for _, b := range branches {
-		names = append(names, b.Name)
+		del := m.deletions[b.Name]
+		del.Branch = b
+		deletions = append(deletions, del)
+	}
+	return deletions, nil
+}
+
+func (m *memoryDeleter) Delete(_ context.Context, deletions []stack.Deletion) error {
+	var names []string
+	for _, del := range deletions {
+		names = append(names, del.Branch.Name)
 	}
 	m.deleted = append(m.deleted, names)
 	return m.err
@@ -1220,9 +1230,54 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("the delete says when the trunk has the changes of a branch", func(t *testing.T) {
-			view := screen(press(startDeleting(&memoryDeleter{trunkHas: map[string]bool{"billing": true}}), "j", "j", "d"))
+			view := screen(press(startDeleting(&memoryDeleter{deletions: map[string]stack.Deletion{"billing": {TrunkHas: true}}}), "j", "j", "d"))
 
 			require.Regexp(t, `└─ billing\s+the trunk has its changes`, view)
+		})
+
+		t.Run("the delete of a branch in another worktree says that it removes the worktree", func(t *testing.T) {
+			deleter := &memoryDeleter{deletions: map[string]stack.Deletion{"billing": {RemovesWorktree: "/work/strata-billing"}}}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Regexp(t, `└─ billing\s+loses 1 commit · removes worktree strata-billing`, view)
+			require.Contains(t, view, "y delete 1 branch and remove 1 worktree · any other key cancels")
+		})
+
+		t.Run("the delete lists the changed files that the removed worktree loses", func(t *testing.T) {
+			deleter := &memoryDeleter{deletions: map[string]stack.Deletion{"billing": {
+				RemovesWorktree: "/work/strata-billing", LostFiles: []string{"invoice.go", "notes.txt"},
+			}}}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Contains(t, view, "removes worktree strata-billing and loses 2 changed files: invoice.go, notes.txt")
+			require.Contains(t, view, "y delete 1 branch, remove 1 worktree and lose 2 changed files · any other key cancels")
+		})
+
+		t.Run("the delete of a worktree whose folder is gone says that strata forgets it", func(t *testing.T) {
+			deleter := &memoryDeleter{deletions: map[string]stack.Deletion{"billing": {RemovesWorktree: "/work/strata-billing", WorktreeGone: true}}}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Contains(t, view, "forgets worktree strata-billing, whose folder is gone")
+		})
+
+		t.Run("a check that refuses the delete shows why in the status line", func(t *testing.T) {
+			deleter := &memoryDeleter{checkErr: errors.New("billing is checked out here: switch to another branch first")}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Contains(t, view, "billing is checked out here: switch to another branch first")
+			require.NotContains(t, view, "Stack · delete")
+		})
+
+		t.Run("after the delete, the footer names each removed worktree", func(t *testing.T) {
+			deleter := &memoryDeleter{deletions: map[string]stack.Deletion{"billing": {RemovesWorktree: "/work/strata-billing"}}}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d", "y"))
+
+			require.Contains(t, view, "Deleted billing (was b2b2b2b). Removed worktree strata-billing.")
 		})
 
 		t.Run("d refuses a branch that another branch sits on", func(t *testing.T) {

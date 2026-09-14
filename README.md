@@ -74,17 +74,31 @@ Before strata deletes a branch, the Stack panel shows what the delete loses, and
 | --- | --- |
 | `loses 2 commits` | The branch has 2 commits of its own. |
 | `the trunk has its changes` | The trunk has all the changes of the branch, for example after a squash merge. |
+| `removes worktree strata-api` | Another worktree has the branch checked out. strata removes that worktree. |
+| `removes worktree strata-api and loses 2 changed files: a.go, notes.txt` | The worktree has modified or untracked files, and the delete loses them. |
+| `forgets worktree strata-api, whose folder is gone` | The folder of the worktree is gone. strata removes the record that git keeps of it. |
+
+The Stack panel shows `in <folder>` beside each branch that another worktree has checked out, and
+`rebase in <folder>` beside each branch that a rebase uses.
 
 strata does not delete these branches:
 
-- A branch that a worktree has checked out. This includes the branch that you are on.
+- The branch that strata runs on, and a branch that the main worktree has checked out.
+- A branch whose worktree is locked. `git worktree unlock` unlocks it.
 - A branch that a rebase uses, in any worktree.
 - A branch that another branch sits on, unless you delete that branch too. strata finds each parent from
   the commits, so the branch that stays then shows the commits of the deleted branch as its own.
 
-strata deletes the branches in one transaction, with the tip that it read for each branch. When a branch
-moved after strata read it, strata deletes no branch. The footer then names each deleted branch with its
-tip, for example `Deleted billing (was 1a2b3c4).` `git branch billing 1a2b3c4` brings the branch back.
+strata removes the worktrees with `git worktree remove` first. A worktree with modified or untracked files
+needs `--force`, and strata uses it only for the files that the Stack panel showed. When the worktree
+changes after strata shows the delete, strata removes nothing and asks you to press `d` again. git also
+removes the ignored files of a worktree, such as build output. A shell or a tmux window in a removed
+worktree stays open in a folder that is gone.
+
+Then strata deletes the branches in one transaction, with the tip that it read for each branch. When a
+branch moved after strata read it, strata deletes no branch. When a step fails, the status line names the
+worktrees that strata already removed. When the delete succeeds, the footer names each deleted branch with
+its tip, for example `Deleted billing (was 1a2b3c4).` `git branch billing 1a2b3c4` brings the branch back.
 
 strata deletes only local branches. With `--remote`, `space` and `d` do nothing.
 
