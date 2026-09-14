@@ -59,8 +59,8 @@ strata sync --resolve <branch>  # start a sync rebase for the stack of <branch>
 strata sync --keep-merged       # do not delete the merged branches
 ```
 
-In the terminal UI, `S` shows the plan of a sync in the Stack panel, and `enter` moves the stacks. On git
-older than 2.44, strata does not show the sync.
+In the terminal UI, `S` shows the plan of a sync in the Stack panel, and `enter` moves the stack of the
+selected branch. On git older than 2.44, strata does not show the sync.
 
 ## Version and update
 
@@ -118,7 +118,7 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `Q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |
-| Sync plan | `enter` | Move each stack that has no conflict. |
+| Sync plan | `enter` | Move the stack of the selected branch. The plan stays open with the other stacks. |
 | | `c` | Resolve the conflict of the stack of the branch in a shell. |
 | | `q` `esc` | Close the plan. |
 | Files | `j` `k` `g` `G` | Move between files and folders. |

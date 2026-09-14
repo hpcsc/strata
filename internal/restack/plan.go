@@ -116,6 +116,22 @@ func (p Plan) withNewTips(newTips map[string]string) Plan {
 	return p
 }
 
+func (p Plan) ForStackOf(branch string) Plan {
+	names := stackOf(p, branch)
+	branches := make([]stack.Branch, 0, len(names))
+	outcomes := make(map[string]Outcome, len(names))
+	for _, name := range names {
+		branches = append(branches, p.Tree.Branches[p.Tree.Index(name)])
+		outcomes[name] = p.Outcomes[name]
+	}
+	p.Tree.Branches, p.Outcomes = branches, outcomes
+	return p
+}
+
+func (p Plan) StackMoves(branch string) bool {
+	return p.stackMoves(stackOf(p, branch))
+}
+
 func (p Plan) StackHasConflict(branch string) bool {
 	for _, name := range stackOf(p, branch) {
 		if p.Outcomes[name].Kind == Conflict {

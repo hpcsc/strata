@@ -19,6 +19,14 @@ type runner interface {
 
 type Fetch func(ctx context.Context, remote string) error
 
+type Progress func(step string)
+
+func (p Progress) report(step string) {
+	if p != nil {
+		p(step)
+	}
+}
+
 type Planner struct {
 	git      runner
 	fetch    Fetch
@@ -30,17 +38,27 @@ func NewPlanner(git runner, fetch Fetch, trunk string, patterns []string) *Plann
 	return &Planner{git: git, fetch: fetch, trunk: trunk, patterns: patterns}
 }
 
-func (p *Planner) Plan(ctx context.Context) (Plan, error) {
+func (p *Planner) Plan(ctx context.Context, progress Progress) (Plan, error) {
+	return p.plan(ctx, true, progress)
+}
+
+func (p *Planner) Replan(ctx context.Context, progress Progress) (Plan, error) {
+	return p.plan(ctx, false, progress)
+}
+
+func (p *Planner) plan(ctx context.Context, fetch bool, progress Progress) (Plan, error) {
 	before, ref, err := p.revParseTrunk(ctx, "--symbolic-full-name", p.trunk)
 	if err != nil {
 		return Plan{}, err
 	}
-	if remote := remoteOf(ref); remote != "" {
+	if remote := remoteOf(ref); fetch && remote != "" {
+		progress.report("fetching " + remote)
 		if err := p.fetch(ctx, remote); err != nil {
 			return Plan{}, err
 		}
 	}
 
+	progress.report("reading the branches")
 	tree, err := stack.NewReader(p.git, p.trunk, p.patterns).Read(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -55,7 +73,8 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 	}
 
 	outcomes := map[string]Outcome{}
-	for _, b := range tree.Branches {
+	for i, b := range tree.Branches {
+		progress.report(fmt.Sprintf("replaying %s (%d of %d)", b.Name, i+1, len(tree.Branches)))
 		o, err := p.outcome(ctx, tree.Trunk, tip, treeOfTip, b, outcomes)
 		if err != nil {
 			return Plan{}, err
@@ -63,6 +82,7 @@ func (p *Planner) Plan(ctx context.Context) (Plan, error) {
 		outcomes[b.Name] = o
 	}
 	blockStacks(tree, outcomes)
+	progress.report("checking the worktrees")
 	check, err := newWorktreeCheck(ctx, p.git)
 	if err != nil {
 		return Plan{}, err

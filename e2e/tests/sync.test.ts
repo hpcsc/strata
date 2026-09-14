@@ -19,22 +19,46 @@ describe('the S key', () => {
     expect(screen).toContain('q close')
   })
 
-  it('then enter moves the stacks, and the Stack panel shows the new tree', async () => {
+  it('then enter moves the stack of the selected branch, and the plan stays open with the other stack', async () => {
     const repo = ordersRepo()
     repo.commitOnOrigin('README.md', '# shop\n\nOpen all day\n', 'Open all day')
     const strata = await openStrata(repo.dir)
     await strata.waitForText('S sync')
     await strata.type('S')
-    await strata.waitForText('⏎ move 2 stacks')
+    await strata.waitForText('⏎ move this stack')
 
     await strata.press('enter')
 
-    const screen = await strata.waitForText('Moved 2 stacks.')
+    const screen = await strata.waitForText('Moved the stack of orders-events.')
+    expect(screen).toContain('Stack · sync plan')
+    expect(screen).toMatch(/└─ orders-events\s+up to date/)
+    expect(screen).toMatch(/├─ billing\s+moves onto origin\/main/)
+    expect(repo.git('status', '--porcelain')).toBe('')
+  })
+
+  it('then enter on the other stack moves it, and q shows the new tree', async () => {
+    const repo = ordersRepo()
+    repo.commitOnOrigin('README.md', '# shop\n\nOpen all day\n', 'Open all day')
+    const strata = await openStrata(repo.dir)
+    await strata.waitForText('S sync')
+    await strata.type('S')
+    await strata.waitForText('⏎ move this stack')
+    await strata.press('enter')
+    await strata.waitForText('Moved the stack of orders-events.')
+    await strata.press('k')
+    await strata.waitForText('Branch · orders-events')
+    await strata.press('k')
+    await strata.waitForText('Branch · billing')
+    await strata.press('enter')
+    await strata.waitForText('Moved the stack of billing.')
+
+    await strata.press('q')
+
+    const screen = await strata.waitForText('r refresh')
     expect(screen).not.toContain('sync plan')
     expect(screen).toMatch(/└─ orders-handler\s+2 commits/)
     expect(screen).toMatch(/ {3}└─ orders-api\s+1 commit\s/)
     expect(screen).not.toContain('behind parent')
-    expect(repo.git('status', '--porcelain')).toBe('')
   })
 
   it('shows the error of a fetch that needs a passphrase, and nothing asks for it on the screen', async () => {
@@ -102,8 +126,8 @@ describe('the c key', () => {
     await strata.waitForText('⏎ move the resolved stack')
     await strata.press('enter')
 
-    const screen = await strata.waitForText('Moved 1 stack.')
-    expect(screen).not.toContain('behind parent')
+    const screen = await strata.waitForText('Moved the stack of orders-events.')
+    expect(screen).toMatch(/└─ orders-events\s+up to date/)
     expect(repo.git('show', 'orders-events:orders/events.go')).toContain('OrderShipped')
     expect(repo.git('status', '--porcelain')).toBe('')
   })

@@ -41,8 +41,11 @@ type planLoaded struct {
 }
 
 type stacksMoved struct {
-	result restack.Result
-	err    error
+	stack   string
+	result  restack.Result
+	err     error
+	plan    restack.Plan
+	planErr error
 }
 
 type resolveStarted struct {
@@ -80,7 +83,8 @@ type Model struct {
 	wantPath   string
 	prompt     prompt
 	initial    tea.Cmd
-	busy       string
+	work       *work
+	spins      int
 	notice     string
 	rebaseDone bool
 }
@@ -127,22 +131,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stack.replace(msg.tree)
 		m.layout()
 		return m, m.showSelection()
+	case workTicked:
+		if msg.work != m.work {
+			return m, nil
+		}
+		m.spins++
+		return m, m.work.tick()
 	case stacksMoved:
-		m.busy = ""
-		m.stack.plan, m.rebaseDone = nil, false
+		m.work, m.rebaseDone = nil, false
 		if msg.err != nil {
+			m.stack.plan = nil
 			return m, m.readTree(msg.err.Error(), "")
 		}
-		report := "Moved " + plural(msg.result.Moved, "stack") + "."
-		if len(msg.result.Stayed) == 0 {
-			return m, m.readTree("", report)
+		m.status, m.notice = moveReport(msg.stack, msg.result)
+		if msg.planErr != nil {
+			m.stack.plan = nil
+			return m, m.readTree(strings.TrimSpace(m.status+" "+msg.planErr.Error()), m.notice)
 		}
-		for _, s := range msg.result.Stayed {
-			report += " The stack of " + s.Stack + " stays: " + s.Reason
-		}
-		return m, m.readTree(report, "")
+		m.stack.showPlanAfterMove(msg.plan)
+		m.cache.clear()
+		m.filesKey = ""
+		m.layout()
+		return m, m.showSelection()
 	case planLoaded:
-		m.busy = ""
+		m.work = nil
 		if msg.err != nil {
 			m.status = msg.err.Error()
 			return m, nil
@@ -159,19 +171,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, m.showSelection()
 	case resolveStarted:
-		m.busy = ""
+		m.work = nil
 		if msg.err != nil {
 			m.status = msg.err.Error()
 			return m, nil
 		}
 		if msg.pending.State != restack.RebaseWaits {
-			m.busy = "reading the sync rebase…"
-			return m, m.readSync(false)
+			return m, m.startWork("reading the sync rebase", m.readSync(false))
 		}
 		return m, tea.ExecProcess(shellIn(msg.pending), func(error) tea.Msg { return shellExited{} })
 	case shellExited:
-		m.busy = "reading the sync rebase…"
-		return m, m.readSync(false)
+		return m, m.startWork("reading the sync rebase", m.readSync(false))
 	}
 	if m.cache.store(msg) {
 		return m, m.showSelection()
@@ -290,8 +300,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.diff.nextMatch()
 	case keymap.PreviousMatch:
 		m.diff.previousMatch()
-	case keymap.MoveStacks:
-		return m, m.moveStacks()
+	case keymap.MoveStack:
+		return m, m.moveStack()
 	case keymap.ResolveConflict:
 		return m, m.resolveConflict()
 	case keymap.ClosePlan:
@@ -325,7 +335,7 @@ func (m Model) action(key string) keymap.Action {
 
 func (m Model) applies(a keymap.Action) bool {
 	switch a {
-	case keymap.MoveStacks, keymap.ResolveConflict, keymap.ClosePlan:
+	case keymap.MoveStack, keymap.ResolveConflict, keymap.ClosePlan:
 		return m.focus == focusStack
 	case keymap.NextMatch, keymap.PreviousMatch:
 		return m.focus == focusDiff
@@ -442,20 +452,19 @@ func (m Model) canSync() bool {
 }
 
 func (m *Model) planSync() tea.Cmd {
-	if m.sources.Sync == nil || m.busy != "" {
+	if m.sources.Sync == nil || m.work != nil {
 		return nil
 	}
 	if err := m.sources.Sync.Available(); err != nil {
 		m.status = err.Error()
 		return nil
 	}
-	m.busy = "fetching the trunk and planning the sync…"
-	return m.readSync(true)
+	return m.startWork("planning the sync", m.readSync(true))
 }
 
-func (m Model) readSync(replan bool) tea.Cmd {
+func (m Model) readSync(thenPlan bool) func(report func(step string)) tea.Msg {
 	ctx, sync := m.ctx, m.sources.Sync
-	return func() tea.Msg {
+	return func(report func(step string)) tea.Msg {
 		pending, err := sync.Pending(ctx)
 		if err != nil {
 			return planLoaded{err: err}
@@ -472,46 +481,63 @@ func (m Model) readSync(replan bool) tea.Cmd {
 			}
 			notice = "You aborted the sync rebase for the stack of " + pending.Stack + ", and no branch moved."
 		}
-		if !replan {
+		if !thenPlan {
 			return planLoaded{notice: notice, keepPlan: true}
 		}
-		plan, err := sync.Plan(ctx)
-		return planLoaded{plan: plan, err: err, notice: notice}
+		next, err := sync.Plan(ctx, func(step string) { report("planning the sync: " + step) })
+		return planLoaded{plan: next, err: err, notice: notice}
 	}
 }
 
 func (m *Model) resolveConflict() tea.Cmd {
 	b, ok := m.stack.selected()
-	if !ok || m.busy != "" || m.stack.plan == nil || m.rebaseDone || !m.stack.plan.StackHasConflict(b.Name) {
+	if !ok || m.work != nil || m.stack.plan == nil || m.rebaseDone || !m.stack.plan.StackHasConflict(b.Name) {
 		return nil
 	}
-	m.busy = "starting the sync rebase…"
 	ctx, sync, plan := m.ctx, m.sources.Sync, *m.stack.plan
-	return func() tea.Msg {
+	return m.startWork("starting the sync rebase", func(func(string)) tea.Msg {
 		pending, err := sync.Resolve(ctx, plan, b.Name)
 		return resolveStarted{pending: pending, err: err}
-	}
+	})
 }
 
-func (m *Model) moveStacks() tea.Cmd {
-	if m.busy != "" {
+func (m *Model) moveStack() tea.Cmd {
+	b, ok := m.stack.selected()
+	if !ok || m.work != nil {
 		return nil
 	}
-	plan := *m.stack.plan
-	if plan.StacksThatMove() == 0 {
-		m.notice = "the plan moves no stack"
+	plan := m.stack.plan.ForStackOf(b.Name)
+	root := plan.Tree.Branches[0].Name
+	if !plan.StackMoves(root) {
+		m.notice = "the stack of " + root + " does not move"
 		return nil
 	}
-	m.busy = "moving the stacks…"
 	ctx, sync, rebaseDone := m.ctx, m.sources.Sync, m.rebaseDone
-	return func() tea.Msg {
+	return m.startWork("moving the stack of "+root, func(report func(string)) tea.Msg {
+		var result restack.Result
+		var err error
 		if rebaseDone {
-			result, err := sync.Finish(ctx)
-			return stacksMoved{result: result, err: err}
+			result, err = sync.Finish(ctx)
+		} else {
+			result, err = sync.Move(ctx, plan)
 		}
-		result, err := sync.Move(ctx, plan)
-		return stacksMoved{result: result, err: err}
+		if err != nil {
+			return stacksMoved{err: err}
+		}
+		next, err := sync.Replan(ctx, func(step string) { report("planning the other stacks: " + step) })
+		return stacksMoved{stack: root, result: result, plan: next, planErr: err}
+	})
+}
+
+func moveReport(stack string, result restack.Result) (status, notice string) {
+	if len(result.Stayed) > 0 {
+		s := result.Stayed[0]
+		return "The stack of " + s.Stack + " stays: " + s.Reason, ""
 	}
+	if result.Moved == 0 {
+		return "", "The stack of " + stack + " did not move."
+	}
+	return "", "Moved the stack of " + stack + "."
 }
 
 func (m Model) reloadTree() tea.Cmd {
@@ -751,8 +777,8 @@ func (m Model) footer() string {
 	if m.status != "" {
 		return errorText.Render(" " + m.status)
 	}
-	if m.busy != "" {
-		return dimText.Render(" " + m.busy)
+	if m.work != nil {
+		return " " + selectedText.Render(spinner[m.spins%len(spinner)]) + " " + truncate(m.work.text()+"…", max(0, m.width-4))
 	}
 	if m.notice != "" {
 		return viewedText.Render(" " + m.notice)
@@ -790,16 +816,17 @@ func (m Model) hints() string {
 }
 
 func (m Model) planHints() string {
-	move := ""
-	switch n := m.stack.plan.StacksThatMove(); {
-	case m.rebaseDone:
-		move = m.hint("move the resolved stack", keymap.MoveStacks)
-	case n > 0:
-		move = m.hint("move "+plural(n, "stack"), keymap.MoveStacks)
-	}
-	resolve := ""
-	if b, ok := m.stack.selected(); ok && !m.rebaseDone && m.stack.plan.StackHasConflict(b.Name) {
-		resolve = m.hint("resolve the conflict", keymap.ResolveConflict)
+	move, resolve := "", ""
+	if b, ok := m.stack.selected(); ok {
+		switch {
+		case m.rebaseDone:
+			move = m.hint("move the resolved stack", keymap.MoveStack)
+		case m.stack.plan.StackMoves(b.Name):
+			move = m.hint("move this stack", keymap.MoveStack)
+		}
+		if !m.rebaseDone && m.stack.plan.StackHasConflict(b.Name) {
+			resolve = m.hint("resolve the conflict", keymap.ResolveConflict)
+		}
 	}
 	return joinHints(m.hint("branch", keymap.StackDown, keymap.StackUp), move, resolve, m.hint("close", keymap.ClosePlan),
 		m.hint("panel", keymap.NextPanel), m.hint("keys", keymap.Help), m.hint("quit", keymap.Quit))

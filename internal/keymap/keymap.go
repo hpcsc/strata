@@ -94,7 +94,7 @@ const (
 	ClearSearch
 	NextMatch
 	PreviousMatch
-	MoveStacks
+	MoveStack
 	ResolveConflict
 	ClosePlan
 	actionCount
@@ -151,7 +151,7 @@ var definitions = [actionCount]definition{
 	ClearSearch:       {InSearch, "clear", []string{"esc"}, "clear the search"},
 	NextMatch:         {InSearch, "next_match", []string{"n"}, "next match in the diff"},
 	PreviousMatch:     {InSearch, "previous_match", []string{"N"}, "previous match in the diff"},
-	MoveStacks:        {InPlan, "move_stacks", []string{"enter"}, "move the stacks that the plan moves"},
+	MoveStack:         {InPlan, "move_stack", []string{"enter"}, "move the stack of the selected branch"},
 	ResolveConflict:   {InPlan, "resolve_conflict", []string{"c"}, "resolve the conflict of the stack in a shell"},
 	ClosePlan:         {InPlan, "close", []string{"q", "esc"}, "close the plan"},
 }

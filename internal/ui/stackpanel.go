@@ -61,6 +61,17 @@ func (p *stackPanel) showPlan(plan restack.Plan) {
 	p.replace(plan.Tree)
 }
 
+func (p *stackPanel) showPlanAfterMove(plan restack.Plan) {
+	p.treeBeforePlan = plan.Tree
+	if p.plan == nil {
+		p.replace(plan.Tree)
+		return
+	}
+	plan.NewCommits = p.plan.NewCommits
+	p.plan = &plan
+	p.replace(plan.Tree)
+}
+
 func (p *stackPanel) closePlan() {
 	if p.plan == nil {
 		return

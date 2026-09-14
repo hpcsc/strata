@@ -53,11 +53,14 @@ The exit status is 1 when a stack stays because of a conflict, or when a stack d
 | Key | Where | Action |
 | --- | --- | --- |
 | `S` | Anywhere | Get the trunk from the remote and show the plan in the Stack panel. No branch moves yet. |
-| `enter` | The plan | Move each stack that has no conflict. |
+| `enter` | The plan, on a branch of a stack that moves | Move the stack of that branch. The other stacks stay where they are. |
 | `c` | The plan, on a branch of a stack with a conflict | Start a sync rebase for that stack and open your shell in the sync worktree. |
 | `q` `esc` | The plan | Close the plan and change nothing. |
 
-The footer shows how many stacks `enter` moves, for example `enter move 2 stacks`.
+While strata plans, the footer names the step, for example `planning the sync: replaying orders-api (3 of 7)`.
+
+After `enter` moves a stack, strata plans the other stacks again, without a fetch, so that they go onto the
+same trunk. The plan stays open with the new outcomes until you close it.
 
 The terminal UI gets the trunk with no terminal for git. A fetch that needs a password therefore fails and
 shows the git error in the status line. strata does not ask for the password, because the question would
@@ -172,7 +175,7 @@ strata reads these to find the state of the sync rebase:
 ```mermaid
 stateDiagram-v2
     [*] --> Plan: S or strata sync
-    Plan --> Moved: enter, for the stacks with no conflict
+    Plan --> Moved: enter for the stack of the selected branch, or strata sync for the stacks with no conflict
     Plan --> Waits: c or --resolve
     Waits --> Done: git rebase --continue
     Waits --> Aborted: git rebase --abort

@@ -21,7 +21,7 @@ func TestResolver(t *testing.T) {
 	plan := func(t *testing.T, repo *gittest.Repo) restack.Plan {
 		t.Helper()
 		g := git.New(repo.Dir)
-		p, err := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"}).Plan(ctx)
+		p, err := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"}).Plan(ctx, nil)
 		require.NoError(t, err)
 		return p
 	}

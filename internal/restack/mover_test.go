@@ -22,7 +22,7 @@ func TestMover(t *testing.T) {
 	plan := func(t *testing.T, repo *gittest.Repo) restack.Plan {
 		t.Helper()
 		g := git.New(repo.Dir)
-		p, err := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"}).Plan(context.Background())
+		p, err := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"}).Plan(context.Background(), nil)
 		require.NoError(t, err)
 		return p
 	}
@@ -66,6 +66,24 @@ func TestMover(t *testing.T) {
 				{Name: "events", Parent: "origin/main", Behind: 0, Commits: 2},
 				{Name: "handler", Parent: "events", Behind: 0, Commits: 1, Level: 1},
 			}, placements(tree))
+		})
+
+		t.Run("the plan for the stack of one branch moves that stack and leaves the other stacks where they are", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			p := plan(t, repo)
+			eventsBefore := commit(t, repo, "events")
+
+			result := move(t, repo, p.ForStackOf("billing"))
+
+			require.Equal(t, restack.Result{Moved: 1}, result)
+			require.Equal(t, []string{p.Outcomes["billing"].NewTip, eventsBefore}, []string{commit(t, repo, "billing"), commit(t, repo, "events")})
 		})
 
 		t.Run("deletes a merged branch and its settings in the transaction of its stack, and its children sit on the trunk", func(t *testing.T) {

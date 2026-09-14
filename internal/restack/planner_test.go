@@ -19,7 +19,7 @@ func TestPlanner(t *testing.T) {
 	plan := func(t *testing.T, repo *gittest.Repo, trunk string) restack.Plan {
 		t.Helper()
 		g := git.New(repo.Dir)
-		p, err := restack.NewPlanner(g, g.Fetch, trunk, []string{"refs/heads/"}).Plan(context.Background())
+		p, err := restack.NewPlanner(g, g.Fetch, trunk, []string{"refs/heads/"}).Plan(context.Background(), nil)
 		require.NoError(t, err)
 		return p
 	}
@@ -112,6 +112,29 @@ func TestPlanner(t *testing.T) {
 			require.Equal(t, 0, p.NewCommits)
 			require.Equal(t, "Start the shop", strings.TrimSpace(repo.Git("log", "-1", "--format=%s", "origin/main")))
 			require.Equal(t, []string{"events: up to date"}, outcomes(p))
+		})
+
+		t.Run("reports the fetch, the read, each branch it replays and the worktree check, in order", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.SwitchNew("handler")
+			repo.Commit("handler.go", "package orders\n", "Add the handler")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			g := git.New(repo.Dir)
+			var steps []string
+
+			_, err := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"}).
+				Plan(context.Background(), func(step string) { steps = append(steps, step) })
+
+			require.NoError(t, err)
+			require.Equal(t, []string{
+				"fetching origin",
+				"reading the branches",
+				"replaying events (1 of 2)",
+				"replaying handler (2 of 2)",
+				"checking the worktrees",
+			}, steps)
 		})
 
 		t.Run("moves no branch", func(t *testing.T) {
@@ -510,6 +533,32 @@ func TestPlanner(t *testing.T) {
 					"events: stays: its worktree " + worktree + " is not there; run git worktree prune if you deleted it",
 				}, outcomes(p))
 			})
+		})
+	})
+
+	t.Run("replan", func(t *testing.T) {
+		t.Run("after a move, plans the stacks that are left against the trunk of the first plan, and fetches nothing", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("billing")
+			repo.Commit("billing.go", "package billing\n", "Add billing")
+			repo.Switch("main")
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			repo.Switch("main")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			g := git.New(repo.Dir)
+			planner := restack.NewPlanner(g, g.Fetch, "origin/main", []string{"refs/heads/"})
+			first, err := planner.Plan(context.Background(), nil)
+			require.NoError(t, err)
+			_, err = restack.NewMover(g).Move(context.Background(), first.ForStackOf("billing"))
+			require.NoError(t, err)
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all night\n", "Open all night")
+
+			again, err := planner.Replan(context.Background(), nil)
+
+			require.NoError(t, err)
+			require.Equal(t, first.TrunkTip, again.TrunkTip)
+			require.Equal(t, []string{"billing: up to date", "events: moves onto origin/main"}, outcomes(again))
 		})
 	})
 }

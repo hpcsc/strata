@@ -291,7 +291,7 @@ func syncStacks(ctx context.Context, cmd *cli.Command) error {
 		fmt.Fprintf(out, "You aborted the sync rebase for the stack of %s, and no branch of it moved.\n\n", pending.Stack)
 	}
 
-	plan, err := restack.NewPlanner(repo, repo.Fetch, trunk, patternsOf(cmd)).Plan(ctx)
+	plan, err := restack.NewPlanner(repo, repo.Fetch, trunk, patternsOf(cmd)).Plan(ctx, nil)
 	if err != nil {
 		return err
 	}

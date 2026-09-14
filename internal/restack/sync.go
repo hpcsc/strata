@@ -17,8 +17,12 @@ func (s *Sync) Available() error {
 	return s.unavailable
 }
 
-func (s *Sync) Plan(ctx context.Context) (Plan, error) {
-	return s.planner.Plan(ctx)
+func (s *Sync) Plan(ctx context.Context, progress Progress) (Plan, error) {
+	return s.planner.Plan(ctx, progress)
+}
+
+func (s *Sync) Replan(ctx context.Context, progress Progress) (Plan, error) {
+	return s.planner.Replan(ctx, progress)
 }
 
 func (s *Sync) Move(ctx context.Context, plan Plan) (Result, error) {
