@@ -24,6 +24,9 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install tmux for the tests of internal/tmux
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
+
       - run: task check
 
   e2e:
