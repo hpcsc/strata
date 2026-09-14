@@ -16,6 +16,7 @@ func TestTree(t *testing.T) {
 				{Name: "events", Parent: "origin/main"},
 				{Name: "handler", Parent: "events", Level: 1},
 				{Name: "billing", Parent: "origin/main", Worktree: "/work/billing"},
+				{Name: "api", Parent: "origin/main", RebaseWorktree: "/work/api"},
 			}}
 		}
 
@@ -29,6 +30,12 @@ func TestTree(t *testing.T) {
 			err := tree().CheckDelete([]string{"billing"})
 
 			require.EqualError(t, err, "billing is checked out in /work/billing: switch that worktree to another branch first")
+		})
+
+		t.Run("refuses a branch that a rebase uses", func(t *testing.T) {
+			err := tree().CheckDelete([]string{"api"})
+
+			require.EqualError(t, err, "a rebase in /work/api uses api: finish or abort the rebase first")
 		})
 	})
 }

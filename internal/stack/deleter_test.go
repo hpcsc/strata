@@ -82,6 +82,23 @@ func TestDeleter(t *testing.T) {
 			require.ErrorContains(t, err, "events is checked out in ")
 			require.Equal(t, []string{"billing", "events", "main"}, heads(t, repo))
 		})
+
+		t.Run("refuses a branch that a rebase started to use after strata read it, and deletes nothing", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.Switch("main")
+			tree := read(t, repo)
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Git("fetch", "-q")
+			worktree.StartRebase("origin/main")
+
+			err := deleter(repo).Delete(ctx, tree.Branches)
+
+			require.ErrorContains(t, err, "uses events: finish or abort the rebase first")
+			require.Equal(t, []string{"events", "main"}, heads(t, repo))
+		})
 	})
 
 	t.Run("trunk has", func(t *testing.T) {

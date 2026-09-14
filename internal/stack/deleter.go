@@ -57,8 +57,16 @@ func (d *Deleter) Delete(ctx context.Context, branches []Branch) error {
 			checkedOut[ref] = worktree
 		}
 	}
+	common, err := d.git.Run(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	rebases := RebaseWorktrees(strings.TrimSpace(common))
 	var deletes []string
 	for _, b := range branches {
+		if worktree := rebases[b.Ref]; worktree != "" {
+			return rebaseError(b.Name, worktree)
+		}
 		if worktree := checkedOut[b.Ref]; worktree != "" {
 			return checkedOutError(b.Name, worktree)
 		}

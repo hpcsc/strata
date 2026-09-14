@@ -78,6 +78,7 @@ Before strata deletes a branch, the Stack panel shows what the delete loses, and
 strata does not delete these branches:
 
 - A branch that a worktree has checked out. This includes the branch that you are on.
+- A branch that a rebase uses, in any worktree.
 - A branch that another branch sits on, unless you delete that branch too. strata finds each parent from
   the commits, so the branch that stays then shows the commits of the deleted branch as its own.
 
