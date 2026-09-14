@@ -3,7 +3,6 @@ package restack
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/hpcsc/strata/internal/stack"
@@ -19,24 +18,7 @@ func newWorktreeCheck(ctx context.Context, git runner) (*worktreeCheck, error) {
 	if err != nil {
 		return nil, err
 	}
-	common := strings.TrimSpace(out)
-	w := &worktreeCheck{git: git, rebasedIn: map[string]string{}}
-	w.readRebases(common, mainWorktree(common))
-	admin, _ := filepath.Glob(filepath.Join(common, "worktrees", "*"))
-	for _, dir := range admin {
-		if gitdir, err := os.ReadFile(filepath.Join(dir, "gitdir")); err == nil {
-			w.readRebases(dir, filepath.Dir(strings.TrimSpace(string(gitdir))))
-		}
-	}
-	return w, nil
-}
-
-func (w *worktreeCheck) readRebases(gitDir, worktree string) {
-	for _, state := range []string{"rebase-merge", "rebase-apply"} {
-		if ref, err := os.ReadFile(filepath.Join(gitDir, state, "head-name")); err == nil {
-			w.rebasedIn[strings.TrimSpace(string(ref))] = worktree
-		}
-	}
+	return &worktreeCheck{git: git, rebasedIn: stack.RebaseWorktrees(strings.TrimSpace(out))}, nil
 }
 
 func (w *worktreeCheck) outcome(ctx context.Context, b stack.Branch, o Outcome) (Outcome, error) {
@@ -74,13 +56,6 @@ func (w *worktreeCheck) outcome(ctx context.Context, b stack.Branch, o Outcome) 
 type worktreeHead struct {
 	branch string
 	commit string
-}
-
-func mainWorktree(common string) string {
-	if filepath.Base(common) == ".git" {
-		return filepath.Dir(common)
-	}
-	return common
 }
 
 func parseStatus(out string) (worktreeHead, []string) {
