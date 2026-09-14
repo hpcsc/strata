@@ -55,6 +55,17 @@ type resolveStarted struct {
 
 type shellExited struct{}
 
+type deleteChecked struct {
+	branches []stack.Branch
+	trunkHas map[string]bool
+	err      error
+}
+
+type branchesDeleted struct {
+	branches []stack.Branch
+	err      error
+}
+
 type Options struct {
 	Keys  keymap.Keymap
 	Split bool
@@ -182,6 +193,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.ExecProcess(shellIn(msg.pending), func(error) tea.Msg { return shellExited{} })
 	case shellExited:
 		return m, m.startWork("reading the sync rebase", m.readSync(false))
+	case deleteChecked:
+		m.work = nil
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		m.stack.deletion = &deletion{branches: msg.branches, trunkHas: msg.trunkHas}
+		return m, nil
+	case branchesDeleted:
+		m.work = nil
+		if msg.err != nil {
+			return m, m.readTree(msg.err.Error(), "")
+		}
+		return m, m.readTree("", deletedReport(msg.branches))
 	}
 	if m.cache.store(msg) {
 		return m, m.showSelection()
@@ -201,6 +226,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "ctrl+c" {
 		return m, tea.Quit
+	}
+	if m.stack.deletion != nil {
+		branches := m.stack.deletion.branches
+		m.stack.deletion = nil
+		if key != "y" {
+			return m, nil
+		}
+		return m, m.deleteBranches(branches)
 	}
 
 	switch m.action(key) {
@@ -247,6 +280,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.branchAtRow(len(m.stack.shown) - 1)
 	case keymap.StackOpen:
 		m.focus = focusFiles
+	case keymap.StackMark:
+		if m.stack.toggleMark() {
+			return m, m.showSelection()
+		}
+	case keymap.StackDelete:
+		return m, m.checkDelete()
 	case keymap.FilesDown:
 		return m, m.moveRow(m.files.cursor + 1)
 	case keymap.FilesUp:
@@ -339,6 +378,8 @@ func (m Model) applies(a keymap.Action) bool {
 		return m.focus == focusStack
 	case keymap.NextMatch, keymap.PreviousMatch:
 		return m.focus == focusDiff
+	case keymap.StackMark, keymap.StackDelete:
+		return m.sources.Deleter != nil && m.stack.plan == nil
 	}
 	return true
 }
@@ -529,6 +570,44 @@ func (m *Model) moveStack() tea.Cmd {
 	})
 }
 
+func (m *Model) checkDelete() tea.Cmd {
+	branches := m.stack.deleteTargets()
+	if len(branches) == 0 || m.work != nil {
+		return nil
+	}
+	names := make([]string, len(branches))
+	for i, b := range branches {
+		names[i] = b.Name
+	}
+	if err := m.stack.tree.CheckDelete(names); err != nil {
+		m.status = err.Error()
+		return nil
+	}
+	ctx, deleter := m.ctx, m.sources.Deleter
+	return m.startWork("reading what the delete loses", func(func(string)) tea.Msg {
+		trunkHas, err := deleter.TrunkHas(ctx, branches)
+		return deleteChecked{branches: branches, trunkHas: trunkHas, err: err}
+	})
+}
+
+func (m *Model) deleteBranches(branches []stack.Branch) tea.Cmd {
+	ctx, deleter := m.ctx, m.sources.Deleter
+	return m.startWork("deleting "+plural(len(branches), "branch"), func(func(string)) tea.Msg {
+		return branchesDeleted{branches: branches, err: deleter.Delete(ctx, branches)}
+	})
+}
+
+func deletedReport(branches []stack.Branch) string {
+	parts := make([]string, len(branches))
+	for i, b := range branches {
+		parts[i] = b.Name + " (was " + b.Tip[:min(7, len(b.Tip))] + ")"
+	}
+	if len(parts) == 1 {
+		return "Deleted " + parts[0] + "."
+	}
+	return "Deleted " + strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1] + "."
+}
+
 func moveReport(stack string, result restack.Result) (status, notice string) {
 	if len(result.Stayed) > 0 {
 		s := result.Stayed[0]
@@ -642,8 +721,11 @@ func (m Model) screen() string {
 	}
 	bottom := m.height - 1 - m.stackHeight
 	stackTitle := "Stack"
-	if m.stack.plan != nil {
+	switch {
+	case m.stack.plan != nil:
 		stackTitle = "Stack · sync plan"
+	case m.stack.deletion != nil:
+		stackTitle = "Stack · delete " + plural(len(m.stack.deletion.branches), "branch")
 	}
 	stackBox := box(stackTitle, m.stack.lines(m.width-2, m.focus == focusStack, m.progress), m.width, m.stackHeight, m.focus == focusStack)
 	filesBox := box(m.filesTitle(), m.files.lines(m.filesWidth-2, m.focus == focusFiles), m.filesWidth, bottom, m.focus == focusFiles)
@@ -780,6 +862,9 @@ func (m Model) footer() string {
 	if m.work != nil {
 		return " " + selectedText.Render(spinner[m.spins%len(spinner)]) + " " + truncate(m.work.text()+"…", max(0, m.width-4))
 	}
+	if d := m.stack.deletion; d != nil {
+		return warningText.Render(" y delete " + plural(len(d.branches), "branch") + " · any other key cancels")
+	}
 	if m.notice != "" {
 		return viewedText.Render(" " + m.notice)
 	}
@@ -799,9 +884,14 @@ func (m Model) hints() string {
 		if m.canSync() {
 			sync = m.hint("sync", keymap.Sync)
 		}
-		return joinHints(m.hint("branch", keymap.StackDown, keymap.StackUp), m.hint("files", keymap.StackOpen),
-			m.hint("panel", keymap.NextPanel), m.hint("split", keymap.ToggleSplit), m.hint("zoom", keymap.ToggleZoom),
-			m.hint("refresh", keymap.Refresh), sync, m.hint("keys", keymap.Help), m.hint("quit", keymap.Quit))
+		marked := ""
+		if n := len(m.stack.marked); n > 0 {
+			marked = fmt.Sprintf("%d marked", n)
+		}
+		return joinHints(marked, m.hint("branch", keymap.StackDown, keymap.StackUp), m.hint("files", keymap.StackOpen),
+			m.hint("mark", keymap.StackMark), m.hint("delete", keymap.StackDelete), m.hint("panel", keymap.NextPanel),
+			m.hint("split", keymap.ToggleSplit), m.hint("zoom", keymap.ToggleZoom), m.hint("refresh", keymap.Refresh), sync,
+			m.hint("keys", keymap.Help), m.hint("quit", keymap.Quit))
 	case m.focus == focusFiles:
 		return joinHints(m.hint("move", keymap.FilesDown, keymap.FilesUp), m.hint("fold", keymap.FilesFold),
 			m.hint("diff", keymap.FilesOpen), m.hint("viewed", keymap.ToggleViewed),

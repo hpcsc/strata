@@ -1,6 +1,9 @@
 package stack
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type Branch struct {
 	Name string
@@ -75,6 +78,28 @@ func (t Tree) Index(name string) int {
 		}
 	}
 	return -1
+}
+
+func (t Tree) CheckDelete(names []string) error {
+	deleting := map[string]bool{}
+	for _, name := range names {
+		deleting[name] = true
+	}
+	for _, b := range t.Branches {
+		switch {
+		case deleting[b.Name] && b.Worktree != "":
+			return checkedOutError(b.Name, b.Worktree)
+		// strata finds parents from the commits, so a child that stays then
+		// shows the commits of its deleted parent as its own
+		case deleting[b.Parent] && !deleting[b.Name]:
+			return fmt.Errorf("%s sits on %s: mark %s too", b.Name, b.Parent, b.Name)
+		}
+	}
+	return nil
+}
+
+func checkedOutError(branch, worktree string) error {
+	return fmt.Errorf("%s is checked out in %s: switch that worktree to another branch first", branch, worktree)
 }
 
 type Commit struct {

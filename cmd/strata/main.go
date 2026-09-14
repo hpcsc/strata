@@ -148,12 +148,17 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	}
 	mover := restack.NewMover(repo)
 	sync := restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), mover, restack.NewResolver(repo, mover), syncErr)
+	var deleter ui.Deleter
+	if !cmd.Bool("remote") {
+		deleter = stack.NewDeleter(repo, trunk)
+	}
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,
 		Diffs:       diff.NewLoader(repo),
 		Highlighter: syntax.NewHighlighter(themeOf(cmd, settings)),
 		Viewed:      marks,
 		Sync:        sync,
+		Deleter:     deleter,
 	}, ui.Options{Keys: settings.Keys, Split: settings.Split})
 	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile())).Run()
 	return err

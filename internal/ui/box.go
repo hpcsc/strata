@@ -75,5 +75,8 @@ func plural(n int, word string) string {
 	if n == 1 {
 		return "1 " + word
 	}
+	if strings.HasSuffix(word, "ch") {
+		return strconv.Itoa(n) + " " + word + "es"
+	}
 	return strconv.Itoa(n) + " " + word + "s"
 }

@@ -40,10 +40,16 @@ type Syncer interface {
 	Finish(ctx context.Context) (restack.Result, error)
 }
 
+type Deleter interface {
+	TrunkHas(ctx context.Context, branches []stack.Branch) (map[string]bool, error)
+	Delete(ctx context.Context, branches []stack.Branch) error
+}
+
 type Sources struct {
 	Tree        TreeReader
 	Diffs       DiffLoader
 	Highlighter Highlighter
 	Viewed      ViewedMarks
 	Sync        Syncer
+	Deleter     Deleter
 }

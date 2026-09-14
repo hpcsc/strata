@@ -69,6 +69,8 @@ const (
 	StackTop
 	StackBottom
 	StackOpen
+	StackMark
+	StackDelete
 	FilesDown
 	FilesUp
 	FilesTop
@@ -126,6 +128,8 @@ var definitions = [actionCount]definition{
 	StackTop:          {InStack, "top", []string{"g", "home"}, "first branch"},
 	StackBottom:       {InStack, "bottom", []string{"G", "end"}, "last branch"},
 	StackOpen:         {InStack, "open", []string{"enter", "l", "right"}, "go to the files of the branch"},
+	StackMark:         {InStack, "mark", []string{"space"}, "mark the branch to delete, or unmark it"},
+	StackDelete:       {InStack, "delete", []string{"d"}, "delete the marked branches, or the selected branch"},
 	FilesDown:         {InFiles, "down", []string{"j", "down"}, "next file or folder"},
 	FilesUp:           {InFiles, "up", []string{"k", "up"}, "previous file or folder"},
 	FilesTop:          {InFiles, "top", []string{"g", "home"}, "first row"},

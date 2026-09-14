@@ -132,6 +132,25 @@ func (m *memorySync) Finish(context.Context) (restack.Result, error) {
 	return m.result, nil
 }
 
+type memoryDeleter struct {
+	trunkHas map[string]bool
+	err      error
+	deleted  [][]string
+}
+
+func (m *memoryDeleter) TrunkHas(context.Context, []stack.Branch) (map[string]bool, error) {
+	return m.trunkHas, nil
+}
+
+func (m *memoryDeleter) Delete(_ context.Context, branches []stack.Branch) error {
+	var names []string
+	for _, b := range branches {
+		names = append(names, b.Name)
+	}
+	m.deleted = append(m.deleted, names)
+	return m.err
+}
+
 type memoryViewed map[string]bool
 
 func (m memoryViewed) Has(f diff.File) bool {
@@ -153,6 +172,8 @@ func keyPress(key string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "esc":
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
+	case "space":
+		return tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	}
 	if letter, ok := strings.CutPrefix(key, "ctrl+"); ok {
 		code, _ := utf8.DecodeRuneInString(letter)
@@ -1093,6 +1114,130 @@ func TestModel(t *testing.T) {
 			_, cmd := start(memoryViewed{}).Update(keyPress("q"))
 
 			require.Nil(t, cmd)
+		})
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		tipped := func() stack.Tree {
+			tree, _ := stackOf()
+			for i, tip := range []string{"e0e0e0e0e0", "a1a1a1a1a1", "b2b2b2b2b2"} {
+				tree.Branches[i].Tip = tip
+			}
+			return tree
+		}
+		startWithDeleter := func(deleter ui.Deleter, before, after stack.Tree) tea.Model {
+			_, files := stackOf()
+			m := ui.New(context.Background(), before, ui.Sources{
+				Tree:        memoryTree{tree: after},
+				Diffs:       memoryDiffs{files: files},
+				Highlighter: plainText{},
+				Viewed:      memoryViewed{},
+				Deleter:     deleter,
+			}, defaults())
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			return settle(sized, m.Init())
+		}
+		startDeleting := func(deleter ui.Deleter) tea.Model {
+			return startWithDeleter(deleter, tipped(), tipped())
+		}
+
+		t.Run("the footer shows space and d when strata can delete", func(t *testing.T) {
+			view := screen(startDeleting(&memoryDeleter{}))
+
+			require.Contains(t, view, "space mark · d delete")
+		})
+
+		t.Run("without a deleter, the footer hides mark and delete, and d does nothing", func(t *testing.T) {
+			m := start(memoryViewed{})
+
+			require.NotContains(t, screen(m), "d delete")
+			require.NotContains(t, screen(press(m, "j", "j", "d")), "Stack · delete")
+		})
+
+		t.Run("space marks the branch, and space again unmarks it", func(t *testing.T) {
+			marked := press(startDeleting(&memoryDeleter{}), "j", "j", "space")
+
+			require.Regexp(t, `●└─ billing`, screen(marked))
+			require.Contains(t, screen(marked), "1 marked")
+			require.NotContains(t, screen(press(marked, "space")), "●")
+		})
+
+		t.Run("a marked branch stays in the Stack panel when a filter hides the other branches", func(t *testing.T) {
+			view := screen(press(startDeleting(&memoryDeleter{}), "j", "j", "space", "/", "hand", "enter"))
+
+			require.Regexp(t, `●└─ billing`, view)
+		})
+
+		t.Run("d shows what the selected branch loses, and deletes nothing yet", func(t *testing.T) {
+			deleter := &memoryDeleter{}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Regexp(t, `└─ billing\s+loses 1 commit`, view)
+			require.Contains(t, view, "y delete 1 branch · any other key cancels")
+			require.Empty(t, deleter.deleted)
+		})
+
+		t.Run("d with marked branches asks to delete all of them", func(t *testing.T) {
+			view := screen(press(startDeleting(&memoryDeleter{}), "space", "j", "space", "d"))
+
+			require.Contains(t, view, "Stack · delete 2 branches")
+			require.Regexp(t, `├─ events\s+loses 2 commits`, view)
+			require.Regexp(t, `│  └─ handler\s+loses 1 commit`, view)
+		})
+
+		t.Run("the delete says when the trunk has the changes of a branch", func(t *testing.T) {
+			view := screen(press(startDeleting(&memoryDeleter{trunkHas: map[string]bool{"billing": true}}), "j", "j", "d"))
+
+			require.Regexp(t, `└─ billing\s+the trunk has its changes`, view)
+		})
+
+		t.Run("d refuses a branch that another branch sits on", func(t *testing.T) {
+			view := screen(press(startDeleting(&memoryDeleter{}), "d"))
+
+			require.Contains(t, view, "handler sits on events: mark handler too")
+			require.NotContains(t, view, "Stack · delete")
+		})
+
+		t.Run("y deletes the marked branches together", func(t *testing.T) {
+			deleter := &memoryDeleter{}
+
+			press(startDeleting(deleter), "space", "j", "space", "d", "y")
+
+			require.Equal(t, [][]string{{"events", "handler"}}, deleter.deleted)
+		})
+
+		t.Run("any other key than y cancels the delete", func(t *testing.T) {
+			deleter := &memoryDeleter{}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d", "n"))
+
+			require.Empty(t, deleter.deleted)
+			require.NotContains(t, view, "Stack · delete")
+		})
+
+		t.Run("after the delete, the footer names each deleted branch with its tip", func(t *testing.T) {
+			view := screen(press(startDeleting(&memoryDeleter{}), "space", "j", "space", "d", "y"))
+
+			require.Contains(t, view, "Deleted events (was e0e0e0e) and handler (was a1a1a1a).")
+		})
+
+		t.Run("after the delete, the Stack panel reads the branches again", func(t *testing.T) {
+			after := tipped()
+			after.Branches = after.Branches[:2]
+
+			view := screen(press(startWithDeleter(&memoryDeleter{}, tipped(), after), "j", "j", "d", "y"))
+
+			require.NotRegexp(t, `└─ billing`, view)
+		})
+
+		t.Run("a delete that fails shows why in the status line", func(t *testing.T) {
+			deleter := &memoryDeleter{err: errors.New("strata deleted no branch: cannot lock ref 'refs/heads/billing'")}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d", "y"))
+
+			require.Contains(t, view, "strata deleted no branch: cannot lock ref")
 		})
 	})
 }

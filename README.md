@@ -62,6 +62,31 @@ strata sync --keep-merged       # do not delete the merged branches
 In the terminal UI, `S` shows the plan of a sync in the Stack panel, and `enter` moves the stack of the
 selected branch. On git older than 2.44, strata does not show the sync.
 
+## Delete
+
+`d` in the Stack panel deletes the selected branch. To delete more than one branch, mark each one with
+`space`, and then `d` deletes the marked branches. A marked branch stays in the Stack panel when a search
+hides the other branches.
+
+Before strata deletes a branch, the Stack panel shows what the delete loses, and only `y` deletes:
+
+| The Stack panel shows | Meaning |
+| --- | --- |
+| `loses 2 commits` | The branch has 2 commits of its own. |
+| `the trunk has its changes` | The trunk has all the changes of the branch, for example after a squash merge. |
+
+strata does not delete these branches:
+
+- A branch that a worktree has checked out. This includes the branch that you are on.
+- A branch that another branch sits on, unless you delete that branch too. strata finds each parent from
+  the commits, so the branch that stays then shows the commits of the deleted branch as its own.
+
+strata deletes the branches in one transaction, with the tip that it read for each branch. When a branch
+moved after strata read it, strata deletes no branch. The footer then names each deleted branch with its
+tip, for example `Deleted billing (was 1a2b3c4).` `git branch billing 1a2b3c4` brings the branch back.
+
+strata deletes only local branches. With `--remote`, `space` and `d` do nothing.
+
 ## Version and update
 
 ```sh
@@ -118,6 +143,8 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `Q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |
+| | `space` | Mark the branch to delete, or unmark it. |
+| | `d` | Delete the marked branches, or the selected branch. See [Delete](#delete). |
 | Sync plan | `enter` | Move the stack of the selected branch. The plan stays open with the other stacks. |
 | | `c` | Resolve the conflict of the stack of the branch in a shell. |
 | | `q` `esc` | Close the plan. |

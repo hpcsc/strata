@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -15,12 +17,30 @@ type stackPanel struct {
 	plan           *restack.Plan
 	treeBeforePlan stack.Tree
 	filter         search.Query
+	marked         map[string]bool
+	deletion       *deletion
 	// shown holds the indexes in tree.Branches that show: the branches that
-	// match the filter and the branches they sit on.
+	// match the filter or are marked, and the branches they sit on.
 	shown  []int
 	cursor int
 	offset int
 	height int
+}
+
+type deletion struct {
+	branches []stack.Branch
+	trunkHas map[string]bool
+}
+
+func (d deletion) includes(name string) bool {
+	return slices.ContainsFunc(d.branches, func(b stack.Branch) bool { return b.Name == name })
+}
+
+func (d deletion) loss(b stack.Branch) string {
+	if d.trunkHas[b.Name] {
+		return viewedText.Render("the trunk has its changes")
+	}
+	return warningText.Render("loses " + plural(b.Commits, "commit"))
 }
 
 func newStackPanel(tree stack.Tree) stackPanel {
@@ -49,8 +69,52 @@ func (p *stackPanel) replace(tree stack.Tree) {
 	if i := tree.Index(name); i >= 0 {
 		p.cursor = i
 	}
+	if len(p.marked) > 0 {
+		kept := map[string]bool{}
+		for name := range p.marked {
+			if tree.Index(name) >= 0 {
+				kept[name] = true
+			}
+		}
+		p.marked = kept
+	}
+	p.deletion = nil
 	p.showBranches()
 	p.keepCursorShown()
+}
+
+func (p *stackPanel) toggleMark() (selectionChanged bool) {
+	b, ok := p.selected()
+	if !ok {
+		return false
+	}
+	before := p.cursor
+	marked := maps.Clone(p.marked)
+	if marked == nil {
+		marked = map[string]bool{}
+	}
+	if marked[b.Name] {
+		delete(marked, b.Name)
+	} else {
+		marked[b.Name] = true
+	}
+	p.marked = marked
+	p.showBranches()
+	p.keepCursorShown()
+	return p.cursor != before
+}
+
+func (p stackPanel) deleteTargets() []stack.Branch {
+	var branches []stack.Branch
+	for _, b := range p.tree.Branches {
+		if p.marked[b.Name] {
+			branches = append(branches, b)
+		}
+	}
+	if b, ok := p.selected(); ok && len(branches) == 0 {
+		branches = append(branches, b)
+	}
+	return branches
 }
 
 func (p *stackPanel) showPlan(plan restack.Plan) {
@@ -101,7 +165,7 @@ func (p *stackPanel) setFilter(filter search.Query) bool {
 func (p *stackPanel) showBranches() {
 	keep := make([]bool, len(p.tree.Branches))
 	for i, b := range p.tree.Branches {
-		if !p.filter.Matches(b.Name) {
+		if !p.filter.Matches(b.Name) && !p.marked[b.Name] {
 			continue
 		}
 		for at := i; at >= 0 && !keep[at]; at = p.tree.Index(p.tree.Branches[at].Parent) {
@@ -203,18 +267,22 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 	}
 	rows := []string{trunk}
 	for row, b := range shownTree.Branches {
-		gutter := "  "
+		bar, mark := " ", " "
+		if p.marked[b.Name] {
+			mark = errorText.Render("●")
+		}
 		nameStyle := lipgloss.NewStyle()
 		if b.Name == p.tree.Current {
 			nameStyle = currentText
 		}
 		if p.shown[row] == p.cursor {
-			gutter = dimText.Render("▌") + " "
+			bar = dimText.Render("▌")
 			if focused {
-				gutter = selectedText.Render("▌") + " "
+				bar = selectedText.Render("▌")
 				nameStyle = selectedText
 			}
 		}
+		gutter := bar + mark
 		if !p.filter.Matches(b.Name) {
 			nameStyle = dimText
 		}
@@ -226,6 +294,10 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 		if p.plan != nil {
 			o := p.plan.Outcomes[b.Name]
 			rows = append(rows, gutter+label+"  "+outcomeStyle(o).Render(o.Text()))
+			continue
+		}
+		if p.deletion != nil && p.deletion.includes(b.Name) {
+			rows = append(rows, gutter+label+"  "+p.deletion.loss(b))
 			continue
 		}
 		stats := dimText.Render(fmt.Sprintf("%-11s %-9s", plural(b.Commits, "commit"), plural(b.Files, "file"))) +
