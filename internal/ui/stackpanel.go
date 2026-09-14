@@ -11,6 +11,7 @@ import (
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/search"
 	"github.com/hpcsc/strata/internal/stack"
+	"github.com/hpcsc/strata/internal/tmux"
 )
 
 type stackPanel struct {
@@ -46,6 +47,14 @@ func (d deletion) lostFiles() int {
 	return n
 }
 
+func (d deletion) closedPanes() int {
+	n := 0
+	for _, del := range d {
+		n += len(del.ClosesPanes)
+	}
+	return n
+}
+
 func (d deletion) prompt() string {
 	worktrees := 0
 	for _, del := range d {
@@ -56,6 +65,9 @@ func (d deletion) prompt() string {
 	parts := []string{"delete " + plural(len(d), "branch")}
 	if worktrees > 0 {
 		parts = append(parts, "remove "+plural(worktrees, "worktree"))
+	}
+	if n := d.closedPanes(); n > 0 {
+		parts = append(parts, "close "+plural(n, "tmux pane"))
 	}
 	if n := d.lostFiles(); n > 0 {
 		parts = append(parts, "lose "+plural(n, "changed file"))
@@ -73,12 +85,27 @@ func lossText(del stack.Deletion) string {
 	case del.RemovesWorktree == "":
 		return text
 	case del.WorktreeGone:
-		return text + dimText.Render(" · forgets worktree "+folder+", whose folder is gone")
+		text += dimText.Render(" · forgets worktree " + folder + ", whose folder is gone")
 	case len(del.LostFiles) > 0:
-		return text + errorText.Render(" · removes worktree "+folder+" and loses "+
-			plural(len(del.LostFiles), "changed file")+": "+strings.Join(del.LostFiles, ", "))
+		text += errorText.Render(" · removes worktree " + folder + " and loses " +
+			plural(len(del.LostFiles), "changed file") + ": " + strings.Join(del.LostFiles, ", "))
+	default:
+		text += warningText.Render(" · removes worktree " + folder)
 	}
-	return text + warningText.Render(" · removes worktree "+folder)
+	if len(del.ClosesPanes) > 0 {
+		text += warningText.Render(" · closes " + plural(len(del.ClosesPanes), "tmux pane") + " in " + joinAnd(tmuxWindows(del.ClosesPanes)))
+	}
+	return text
+}
+
+func tmuxWindows(panes []tmux.Pane) []string {
+	var names []string
+	for _, p := range panes {
+		if !slices.Contains(names, p.Window) {
+			names = append(names, p.Window)
+		}
+	}
+	return names
 }
 
 func newStackPanel(tree stack.Tree) stackPanel {

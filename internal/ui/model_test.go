@@ -19,6 +19,7 @@ import (
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
+	"github.com/hpcsc/strata/internal/tmux"
 	"github.com/hpcsc/strata/internal/ui"
 	"github.com/stretchr/testify/require"
 )
@@ -1261,6 +1262,22 @@ func TestModel(t *testing.T) {
 			view := screen(press(startDeleting(deleter), "j", "j", "d"))
 
 			require.Contains(t, view, "forgets worktree strata-billing, whose folder is gone")
+		})
+
+		t.Run("the delete names the windows of the tmux panes that it closes", func(t *testing.T) {
+			deleter := &memoryDeleter{deletions: map[string]stack.Deletion{"billing": {
+				RemovesWorktree: "/work/strata-billing",
+				ClosesPanes: []tmux.Pane{
+					{ID: "%1", Window: "work:strata-billing", Path: "/work/strata-billing"},
+					{ID: "%2", Window: "work:strata-billing", Path: "/work/strata-billing/invoices"},
+					{ID: "%3", Window: "work:edit", Path: "/work/strata-billing"},
+				},
+			}}}
+
+			view := screen(press(startDeleting(deleter), "j", "j", "d"))
+
+			require.Contains(t, view, "removes worktree strata-billing · closes 3 tmux panes in work:strata-billing and work:edit")
+			require.Contains(t, view, "y delete 1 branch, remove 1 worktree and close 3 tmux panes · any other key cancels")
 		})
 
 		t.Run("a check that refuses the delete shows why in the status line", func(t *testing.T) {

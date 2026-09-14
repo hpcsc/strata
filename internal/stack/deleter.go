@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/hpcsc/strata/internal/tmux"
 )
 
 type writer interface {
@@ -14,13 +16,19 @@ type writer interface {
 	Try(ctx context.Context, args ...string) (string, bool, error)
 }
 
+type tmuxServer interface {
+	Panes(ctx context.Context) ([]tmux.Pane, error)
+	ClosePane(ctx context.Context, id string) error
+}
+
 type Deleter struct {
 	git   writer
+	tmux  tmuxServer
 	trunk string
 }
 
-func NewDeleter(git writer, trunk string) *Deleter {
-	return &Deleter{git: git, trunk: trunk}
+func NewDeleter(git writer, trunk string, server tmuxServer) *Deleter {
+	return &Deleter{git: git, tmux: server, trunk: trunk}
 }
 
 type Deletion struct {
@@ -29,6 +37,7 @@ type Deletion struct {
 	RemovesWorktree string
 	WorktreeGone    bool
 	LostFiles       []string
+	ClosesPanes     []tmux.Pane
 }
 
 func (d *Deleter) Check(ctx context.Context, branches []Branch) ([]Deletion, error) {
@@ -36,6 +45,7 @@ func (d *Deleter) Check(ctx context.Context, branches []Branch) ([]Deletion, err
 	if err != nil {
 		return nil, err
 	}
+	panes, _ := d.tmux.Panes(ctx)
 	out, err := d.git.Run(ctx, "rev-parse", d.trunk, d.trunk+"^{tree}")
 	if err != nil {
 		return nil, err
@@ -57,6 +67,7 @@ func (d *Deleter) Check(ctx context.Context, branches []Branch) ([]Deletion, err
 		}
 		written := lines(out)
 		del.TrunkHas = clean && len(written) > 0 && written[0] == treeOfTip
+		del.ClosesPanes = panesIn(panes, del.RemovesWorktree)
 		deletions = append(deletions, del)
 	}
 	return deletions, nil
@@ -79,6 +90,7 @@ func (d *Deleter) Delete(ctx context.Context, deletions []Deletion) error {
 			return fmt.Errorf("the worktree of %s changed after strata showed the delete: press d again", want.Branch.Name)
 		}
 	}
+	panes, _ := d.tmux.Panes(ctx)
 	var removed []string
 	for _, del := range deletions {
 		if del.RemovesWorktree == "" {
@@ -92,6 +104,11 @@ func (d *Deleter) Delete(ctx context.Context, deletions []Deletion) error {
 			return noBranchDeleted(removed, err)
 		}
 		removed = append(removed, del.RemovesWorktree)
+		for _, p := range panesIn(panes, del.RemovesWorktree) {
+			if slices.ContainsFunc(del.ClosesPanes, func(shown tmux.Pane) bool { return shown.ID == p.ID }) {
+				_ = d.tmux.ClosePane(ctx, p.ID)
+			}
+		}
 	}
 	deletes := make([]string, len(deletions))
 	for i, del := range deletions {
@@ -112,6 +129,19 @@ func noBranchDeleted(removed []string, err error) error {
 		return fmt.Errorf("strata deleted no branch: %w", err)
 	}
 	return fmt.Errorf("strata removed %s and deleted no branch: %w", strings.Join(removed, ", "), err)
+}
+
+func panesIn(panes []tmux.Pane, folder string) []tmux.Pane {
+	if folder == "" {
+		return nil
+	}
+	var in []tmux.Pane
+	for _, p := range panes {
+		if p.Path == folder || strings.HasPrefix(p.Path, folder+string(filepath.Separator)) {
+			in = append(in, p)
+		}
+	}
+	return in
 }
 
 func isSubset(files, of []string) bool {

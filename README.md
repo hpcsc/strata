@@ -77,6 +77,7 @@ Before strata deletes a branch, the Stack panel shows what the delete loses, and
 | `removes worktree strata-api` | Another worktree has the branch checked out. strata removes that worktree. |
 | `removes worktree strata-api and loses 2 changed files: a.go, notes.txt` | The worktree has modified or untracked files, and the delete loses them. |
 | `forgets worktree strata-api, whose folder is gone` | The folder of the worktree is gone. strata removes the record that git keeps of it. |
+| `closes 2 tmux panes in work:strata-api` | strata runs in tmux, and 2 panes of the tmux window `strata-api` in the session `work` are in the folder of the worktree. strata closes them, and stops the programs in them. |
 
 The Stack panel shows `in <folder>` beside each branch that another worktree has checked out, and
 `rebase in <folder>` beside each branch that a rebase uses.
@@ -92,8 +93,12 @@ strata does not delete these branches:
 strata removes the worktrees with `git worktree remove` first. A worktree with modified or untracked files
 needs `--force`, and strata uses it only for the files that the Stack panel showed. When the worktree
 changes after strata shows the delete, strata removes nothing and asks you to press `d` again. git also
-removes the ignored files of a worktree, such as build output. A shell or a tmux window in a removed
-worktree stays open in a folder that is gone.
+removes the ignored files of a worktree, such as build output.
+
+When strata runs in tmux, it closes each pane whose folder is in a removed worktree, after it removes the
+worktree. A window closes with its last pane. strata closes only the panes that the Stack panel showed, and
+only when they are still in the worktree. A pane that goes into the worktree after the Stack panel shows the
+delete, and a shell outside tmux, stay open in a folder that is gone.
 
 Then strata deletes the branches in one transaction, with the tip that it read for each branch. When a
 branch moved after strata read it, strata deletes no branch. When a step fails, the status line names the

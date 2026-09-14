@@ -24,6 +24,7 @@ import (
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
 	"github.com/hpcsc/strata/internal/syntax"
+	"github.com/hpcsc/strata/internal/tmux"
 	"github.com/hpcsc/strata/internal/ui"
 	"github.com/hpcsc/strata/internal/version"
 	"github.com/hpcsc/strata/internal/viewed"
@@ -150,7 +151,7 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	sync := restack.NewSync(restack.NewPlanner(repo, repo.FetchWithoutPrompt, trunk, patterns), mover, restack.NewResolver(repo, mover), syncErr)
 	var deleter ui.Deleter
 	if !cmd.Bool("remote") {
-		deleter = stack.NewDeleter(repo, trunk)
+		deleter = stack.NewDeleter(repo, trunk, tmux.New(os.Getenv))
 	}
 	model := ui.New(ctx, tree, ui.Sources{
 		Tree:        reader,

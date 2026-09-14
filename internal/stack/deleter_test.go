@@ -4,6 +4,7 @@ package stack_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,31 @@ import (
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/gittest"
 	"github.com/hpcsc/strata/internal/stack"
+	"github.com/hpcsc/strata/internal/tmux"
 	"github.com/stretchr/testify/require"
 )
+
+type memoryTmux struct {
+	panes    []tmux.Pane
+	panesErr error
+	closeErr error
+	closed   []string
+}
+
+func (m *memoryTmux) Panes(context.Context) ([]tmux.Pane, error) {
+	if m.panesErr != nil {
+		return nil, m.panesErr
+	}
+	return m.panes, nil
+}
+
+func (m *memoryTmux) ClosePane(_ context.Context, id string) error {
+	if m.closeErr != nil {
+		return m.closeErr
+	}
+	m.closed = append(m.closed, id)
+	return nil
+}
 
 func TestDeleter(t *testing.T) {
 	ctx := context.Background()
@@ -27,14 +51,21 @@ func TestDeleter(t *testing.T) {
 		t.Helper()
 		return strings.Fields(repo.Git("for-each-ref", "--format=%(refname:short)", "refs/heads/"))
 	}
+	deleterWith := func(repo *gittest.Repo, server *memoryTmux) *stack.Deleter {
+		return stack.NewDeleter(git.New(repo.Dir), "origin/main", server)
+	}
 	deleter := func(repo *gittest.Repo) *stack.Deleter {
-		return stack.NewDeleter(git.New(repo.Dir), "origin/main")
+		return deleterWith(repo, &memoryTmux{})
+	}
+	checkWith := func(t *testing.T, repo *gittest.Repo, server *memoryTmux) []stack.Deletion {
+		t.Helper()
+		deletions, err := deleterWith(repo, server).Check(ctx, read(t, repo).Branches)
+		require.NoError(t, err)
+		return deletions
 	}
 	check := func(t *testing.T, repo *gittest.Repo) []stack.Deletion {
 		t.Helper()
-		deletions, err := deleter(repo).Check(ctx, read(t, repo).Branches)
-		require.NoError(t, err)
-		return deletions
+		return checkWith(t, repo, &memoryTmux{})
 	}
 	realPath := func(t *testing.T, dir string) string {
 		t.Helper()
@@ -100,6 +131,32 @@ func TestDeleter(t *testing.T) {
 			require.Equal(t, stack.Deletion{Branch: deletions[0].Branch, RemovesWorktree: worktree, WorktreeGone: true}, deletions[0])
 		})
 
+		t.Run("the delete of a worktree closes the tmux panes in its folder, and no other pane", func(t *testing.T) {
+			repo := withEvents(t)
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			inWorktree := tmux.Pane{ID: "%1", Window: "work:events", Path: worktree}
+			inSubfolder := tmux.Pane{ID: "%2", Window: "work:edit", Path: filepath.Join(worktree, "orders")}
+			server := &memoryTmux{panes: []tmux.Pane{
+				inWorktree,
+				inSubfolder,
+				{ID: "%3", Window: "work:shop", Path: realPath(t, repo.Dir)},
+				{ID: "%4", Window: "work:copy", Path: worktree + "-copy"},
+			}}
+
+			deletions := checkWith(t, repo, server)
+
+			require.Equal(t, []tmux.Pane{inWorktree, inSubfolder}, deletions[0].ClosesPanes)
+		})
+
+		t.Run("closes no pane when tmux cannot list its panes", func(t *testing.T) {
+			repo := withEvents(t)
+			repo.Worktree("events")
+
+			deletions := checkWith(t, repo, &memoryTmux{panesErr: errors.New("no server running")})
+
+			require.Empty(t, deletions[0].ClosesPanes)
+		})
+
 		t.Run("refuses the branch that strata runs on", func(t *testing.T) {
 			repo := withEvents(t)
 			repo.Switch("events")
@@ -117,7 +174,7 @@ func TestDeleter(t *testing.T) {
 			tree := read(t, repo)
 			events := tree.Branches[tree.Index("events")]
 
-			_, err := stack.NewDeleter(git.New(billing.Dir), "origin/main").Check(ctx, []stack.Branch{events})
+			_, err := stack.NewDeleter(git.New(billing.Dir), "origin/main", &memoryTmux{}).Check(ctx, []stack.Branch{events})
 
 			require.EqualError(t, err, "events is checked out in the main worktree "+realPath(t, repo.Dir)+": switch it to another branch first")
 		})
@@ -182,6 +239,56 @@ func TestDeleter(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Len(t, strings.Split(strings.TrimSpace(repo.Git("worktree", "list")), "\n"), 1)
+			require.Equal(t, []string{"main"}, heads(t, repo))
+		})
+
+		t.Run("closes the tmux panes that the check listed", func(t *testing.T) {
+			repo := withEvents(t)
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			server := &memoryTmux{panes: []tmux.Pane{{ID: "%1", Window: "work:events", Path: worktree}}}
+
+			err := deleterWith(repo, server).Delete(ctx, checkWith(t, repo, server))
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"%1"}, server.closed)
+		})
+
+		t.Run("leaves a pane that left the worktree after the check", func(t *testing.T) {
+			repo := withEvents(t)
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			server := &memoryTmux{panes: []tmux.Pane{{ID: "%1", Window: "work:events", Path: worktree}}}
+			deletions := checkWith(t, repo, server)
+			server.panes[0].Path = realPath(t, repo.Dir)
+
+			err := deleterWith(repo, server).Delete(ctx, deletions)
+
+			require.NoError(t, err)
+			require.Empty(t, server.closed)
+		})
+
+		t.Run("leaves a pane that opened in the worktree after the check", func(t *testing.T) {
+			repo := withEvents(t)
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			server := &memoryTmux{}
+			deletions := checkWith(t, repo, server)
+			server.panes = []tmux.Pane{{ID: "%1", Window: "work:events", Path: worktree}}
+
+			err := deleterWith(repo, server).Delete(ctx, deletions)
+
+			require.NoError(t, err)
+			require.Empty(t, server.closed)
+		})
+
+		t.Run("deletes the branch when tmux cannot close a pane", func(t *testing.T) {
+			repo := withEvents(t)
+			worktree := realPath(t, repo.Worktree("events").Dir)
+			server := &memoryTmux{panes: []tmux.Pane{{ID: "%1", Window: "work:events", Path: worktree}}}
+			deletions := checkWith(t, repo, server)
+			server.closeErr = errors.New("can't find pane: %1")
+
+			err := deleterWith(repo, server).Delete(ctx, deletions)
+
+			require.NoError(t, err)
 			require.Equal(t, []string{"main"}, heads(t, repo))
 		})
 
