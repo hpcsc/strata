@@ -325,6 +325,38 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "abc1234 Name the events")
 			require.Contains(t, view, "Files · events")
 		})
+
+		inWorktrees := func() modelSources {
+			tree, files := stackOf()
+			tree.Branches[0].Worktree = "/work/strata"
+			tree.Branches[1].RebaseWorktree = "/work/strata-handler"
+			tree.Branches[2].Worktree = "/work/strata-billing"
+			return modelSources{tree: tree, files: files, viewed: memoryViewed{}}
+		}
+
+		t.Run("a branch checked out in another worktree shows the folder of that worktree", func(t *testing.T) {
+			view := screen(startWith(inWorktrees()))
+
+			require.Regexp(t, `└─ billing\s+1 commit .* in strata-billing`, view)
+		})
+
+		t.Run("the branch that strata runs on does not show its worktree", func(t *testing.T) {
+			view := screen(startWith(inWorktrees()))
+
+			require.NotRegexp(t, "├─ events[^\n]* in strata", view)
+		})
+
+		t.Run("a branch that a rebase uses shows the folder of the rebase", func(t *testing.T) {
+			view := screen(startWith(inWorktrees()))
+
+			require.Regexp(t, `└─ handler\s+1 commit .* rebase in strata-handler`, view)
+		})
+
+		t.Run("the branch panel shows the full path of the worktree", func(t *testing.T) {
+			view := screen(press(startWith(inWorktrees()), "j", "j"))
+
+			require.Contains(t, view, "checked out in /work/strata-billing")
+		})
 	})
 
 	t.Run("switch branch", func(t *testing.T) {

@@ -59,6 +59,10 @@ func (r *Reader) Read(ctx context.Context) (Tree, error) {
 		return Tree{}, err
 	}
 	branches := r.place(g, tips, chooseParents(tips, facts, created))
+	rebases := RebaseWorktrees(common)
+	for i := range branches {
+		branches[i].RebaseWorktree = rebases[branches[i].Ref]
+	}
 
 	var current string
 	grp, gctx := errgroup.WithContext(ctx)

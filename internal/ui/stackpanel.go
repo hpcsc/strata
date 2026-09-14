@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -307,6 +308,12 @@ func (p stackPanel) lines(width int, focused bool, progress func(stack.Branch) s
 		}
 		if s := progress(b); s != "" {
 			stats += "  " + viewedText.Render(s)
+		}
+		switch {
+		case b.RebaseWorktree != "":
+			stats += "  " + warningText.Render("rebase in "+filepath.Base(b.RebaseWorktree))
+		case b.Worktree != "" && b.Name != p.tree.Current:
+			stats += "  " + dimText.Render("in "+filepath.Base(b.Worktree))
 		}
 		rows = append(rows, gutter+label+"  "+stats)
 	}

@@ -832,6 +832,12 @@ func (m Model) summaryLines() []string {
 		lines = append(lines, " "+warningText.Render(fmt.Sprintf("%s has %s that %s lacks: restack it",
 			b.Parent, plural(b.Behind, "commit"), b.Name)))
 	}
+	switch {
+	case b.RebaseWorktree != "":
+		lines = append(lines, " "+warningText.Render("a rebase in "+b.RebaseWorktree+" uses it"))
+	case b.Worktree != "":
+		lines = append(lines, " "+dimText.Render("checked out in "+b.Worktree))
+	}
 	lines = append(lines, "")
 	switch list, ready := m.cache.commitList(b); {
 	case !ready:

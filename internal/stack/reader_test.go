@@ -214,6 +214,23 @@ func TestReader(t *testing.T) {
 			require.Empty(t, branch(t, tree, "handler").Worktree)
 		})
 
+		t.Run("gives the worktree of a rebase that uses the branch", func(t *testing.T) {
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("README.md", "shop\n\nopen on weekdays\n", "Open on weekdays")
+			repo.Switch("main")
+			worktree := repo.Worktree("events")
+			repo.CommitOnOrigin("README.md", "shop\n\nopen all day\n", "Open all day")
+			worktree.Git("fetch", "-q")
+			worktree.StartRebase("origin/main")
+			worktreeDir, err := filepath.EvalSymlinks(worktree.Dir)
+			require.NoError(t, err)
+
+			tree := read(t, repo)
+
+			require.Equal(t, worktreeDir, branch(t, tree, "events").RebaseWorktree)
+		})
+
 		t.Run("marks a branch whose remote branch the remote deleted", func(t *testing.T) {
 			repo := gittest.New(t)
 			repo.SwitchNew("events")

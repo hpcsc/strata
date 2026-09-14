@@ -21,6 +21,7 @@ type Branch struct {
 	// Behind counts the commits on Parent that this branch does not have.
 	Behind         int
 	Worktree       string
+	RebaseWorktree string
 	UpstreamGone   bool
 	HasMergeCommit bool
 }
