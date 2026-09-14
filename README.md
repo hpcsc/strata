@@ -115,21 +115,22 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `r` | Read the branches again. |
 | | `S` | Get the trunk from the remote and show the plan of a sync. See [Sync](#sync). |
 | | `?` | Show all keys. |
-| | `q` | Quit. |
+| | `Q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |
 | Sync plan | `enter` | Move each stack that has no conflict. |
 | | `c` | Resolve the conflict of the stack of the branch in a shell. |
-| | `esc` | Close the plan. |
+| | `q` `esc` | Close the plan. |
 | Files | `j` `k` `g` `G` | Move between files and folders. |
 | | `o` | Fold or unfold the folder. On a file, fold the folder that holds it. |
 | | `enter` | Go to the diff. |
+| | `q` `h` `esc` | Go back to the stack. |
 | | `ctrl+d` `ctrl+u` | Scroll the diff. |
 | Diff | `j` `k` | Scroll one line. |
 | | `ctrl+d` `ctrl+u` | Scroll half a page. `space` and `b` scroll a full page. |
 | | `n` `p` | Go to the next or previous hunk. While a search is on, `n` and `N` go to the next or previous match. |
 | | `J` `K` | Go to the next or previous file. The files in a folded folder do not count. |
-| | `esc` | Go back to the files. In zoom, `esc` ends the zoom first. |
+| | `q` `h` `esc` | Go back to the files. In zoom, these keys end the zoom first. |
 
 ## Search
 
@@ -156,7 +157,7 @@ theme = "github"
 split = false
 
 [keys]
-quit = ["q", "Q"]
+quit = ["Q", "ctrl+q"]
 
 [keys.diff]
 next_hunk = ["n", "ctrl+n"]
@@ -186,7 +187,7 @@ Each table applies at a different time. strata looks for a key in the tables in 
 
 | Table | When it applies |
 | --- | --- |
-| `[keys.plan]` | While the sync plan is open. `move_stacks` and `resolve_conflict` apply only in the Stack panel. |
+| `[keys.plan]` | While the sync plan is open. Its actions apply only in the Stack panel. |
 | `[keys.search]` | While the panel with the focus has a search. `next_match` and `previous_match` apply only in the Diff panel. |
 | `[keys]` | In all panels. |
 | `[keys.stack]`, `[keys.files]`, `[keys.diff]` | In the panel with the focus. |

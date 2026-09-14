@@ -325,7 +325,7 @@ func (m Model) action(key string) keymap.Action {
 
 func (m Model) applies(a keymap.Action) bool {
 	switch a {
-	case keymap.MoveStacks, keymap.ResolveConflict:
+	case keymap.MoveStacks, keymap.ResolveConflict, keymap.ClosePlan:
 		return m.focus == focusStack
 	case keymap.NextMatch, keymap.PreviousMatch:
 		return m.focus == focusDiff

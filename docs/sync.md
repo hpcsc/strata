@@ -55,7 +55,7 @@ The exit status is 1 when a stack stays because of a conflict, or when a stack d
 | `S` | Anywhere | Get the trunk from the remote and show the plan in the Stack panel. No branch moves yet. |
 | `enter` | The plan | Move each stack that has no conflict. |
 | `c` | The plan, on a branch of a stack with a conflict | Start a sync rebase for that stack and open your shell in the sync worktree. |
-| `esc` | The plan | Close the plan and change nothing. |
+| `q` `esc` | The plan | Close the plan and change nothing. |
 
 The footer shows how many stacks `enter` moves, for example `enter move 2 stacks`.
 

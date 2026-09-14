@@ -108,7 +108,7 @@ type definition struct {
 }
 
 var definitions = [actionCount]definition{
-	Quit:              {Anywhere, "quit", []string{"q"}, "quit"},
+	Quit:              {Anywhere, "quit", []string{"Q"}, "quit"},
 	Help:              {Anywhere, "help", []string{"?"}, "show all keys"},
 	StartSearch:       {Anywhere, "start_search", []string{"/"}, "filter the panel, or find text in the diff"},
 	NextPanel:         {Anywhere, "next_panel", []string{"tab"}, "next panel"},
@@ -132,7 +132,7 @@ var definitions = [actionCount]definition{
 	FilesBottom:       {InFiles, "bottom", []string{"G", "end"}, "last row"},
 	FilesFold:         {InFiles, "fold", []string{"o"}, "fold or unfold the folder"},
 	FilesOpen:         {InFiles, "open", []string{"enter", "l", "right"}, "go to the diff"},
-	FilesBack:         {InFiles, "back", []string{"h", "left", "esc"}, "back to the stack"},
+	FilesBack:         {InFiles, "back", []string{"q", "h", "left", "esc"}, "back to the stack"},
 	FilesHalfPageDown: {InFiles, "half_page_down", []string{"ctrl+d"}, "scroll the diff down half a page"},
 	FilesHalfPageUp:   {InFiles, "half_page_up", []string{"ctrl+u"}, "scroll the diff up half a page"},
 	DiffDown:          {InDiff, "down", []string{"j", "down"}, "scroll down one line"},
@@ -147,13 +147,13 @@ var definitions = [actionCount]definition{
 	PreviousHunk:      {InDiff, "previous_hunk", []string{"p"}, "previous hunk"},
 	NextFile:          {InDiff, "next_file", []string{"J"}, "next file, past folded folders"},
 	PreviousFile:      {InDiff, "previous_file", []string{"K"}, "previous file, past folded folders"},
-	DiffBack:          {InDiff, "back", []string{"h", "left", "esc"}, "back to the files; in zoom, end the zoom"},
+	DiffBack:          {InDiff, "back", []string{"q", "h", "left", "esc"}, "back to the files; in zoom, end the zoom"},
 	ClearSearch:       {InSearch, "clear", []string{"esc"}, "clear the search"},
 	NextMatch:         {InSearch, "next_match", []string{"n"}, "next match in the diff"},
 	PreviousMatch:     {InSearch, "previous_match", []string{"N"}, "previous match in the diff"},
 	MoveStacks:        {InPlan, "move_stacks", []string{"enter"}, "move the stacks that the plan moves"},
 	ResolveConflict:   {InPlan, "resolve_conflict", []string{"c"}, "resolve the conflict of the stack in a shell"},
-	ClosePlan:         {InPlan, "close", []string{"esc"}, "close the plan"},
+	ClosePlan:         {InPlan, "close", []string{"q", "esc"}, "close the plan"},
 }
 
 func Named(t Table, name string) (Action, bool) {

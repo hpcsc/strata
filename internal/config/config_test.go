@@ -34,7 +34,7 @@ func TestConfig(t *testing.T) {
 		t.Run("the keys of an action replace its default keys", func(t *testing.T) {
 			c, err := config.Parse(`
 [keys]
-quit = ["q", "Q"]
+quit = ["Q", "ctrl+q"]
 
 [keys.diff]
 next_hunk = ["n", "ctrl+n"]
@@ -48,7 +48,7 @@ previous_file = "H"
 				keys[a] = c.Keys.Keys(a)
 			}
 			require.Equal(t, map[keymap.Action][]string{
-				keymap.Quit:         {"q", "Q"},
+				keymap.Quit:         {"Q", "ctrl+q"},
 				keymap.NextHunk:     {"n", "ctrl+n"},
 				keymap.PreviousHunk: {"p"},
 				keymap.NextFile:     {"L"},
@@ -67,7 +67,7 @@ previous_file = "H"
 			want := config.Default()
 			want.Theme, want.Split = "github", false
 			for a, keys := range map[keymap.Action][]string{
-				keymap.Quit:         {"Q"},
+				keymap.Quit:         {"ctrl+q"},
 				keymap.StackTop:     {"ctrl+g"},
 				keymap.FilesFold:    {"f"},
 				keymap.NextHunk:     {"ctrl+n", "n"},

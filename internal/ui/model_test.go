@@ -547,7 +547,7 @@ func TestModel(t *testing.T) {
 			require.Regexp(t, `├─ events\s+moves onto origin/main`, view)
 			require.Regexp(t, `│  └─ handler\s+stays: conflict in order.go`, view)
 			require.Regexp(t, `└─ billing\s+up to date`, view)
-			require.Contains(t, view, "esc close")
+			require.Contains(t, view, "q close")
 		})
 
 		t.Run("while the plan shows, esc closes it even when the stack has a filter", func(t *testing.T) {
@@ -558,10 +558,10 @@ func TestModel(t *testing.T) {
 
 		t.Run("while the plan shows, a key of keys.plan runs ahead of the same key in keys", func(t *testing.T) {
 			opts := defaults()
-			require.NoError(t, opts.Keys.Set(keymap.ClosePlan, []string{"q"}))
+			require.NoError(t, opts.Keys.Set(keymap.ClosePlan, []string{"Q"}))
 			m := press(startWithSyncOptions(&memorySync{plan: planned()}, opts), "S")
 
-			next, cmd := m.Update(keyPress("q"))
+			next, cmd := m.Update(keyPress("Q"))
 
 			require.NotContains(t, screen(settle(next, cmd)), "sync plan")
 		})
@@ -575,6 +575,19 @@ func TestModel(t *testing.T) {
 			require.NotContains(t, view, "sync plan")
 			require.NotContains(t, view, "moves onto")
 			require.Contains(t, view, "1 behind parent")
+		})
+
+		t.Run("q closes the plan", func(t *testing.T) {
+			view := screen(press(startWithSync(&memorySync{plan: planned()}), "S", "q"))
+
+			require.NotContains(t, view, "sync plan")
+		})
+
+		t.Run("while the plan shows, q in the files goes back to the Stack panel and leaves the plan open", func(t *testing.T) {
+			view := screen(press(startWithSync(&memorySync{plan: planned()}), "S", "tab", "q"))
+
+			require.Contains(t, view, "sync plan")
+			require.Contains(t, view, "q close")
 		})
 
 		t.Run("when the sync cannot run, the footer and the keys screen hide S, and S shows why", func(t *testing.T) {
@@ -961,6 +974,37 @@ func TestModel(t *testing.T) {
 
 			back := press(zoomed, "esc")
 			require.Contains(t, screen(back), "Stack")
+		})
+	})
+
+	t.Run("back", func(t *testing.T) {
+		t.Run("q in the files goes back to the Stack panel", func(t *testing.T) {
+			view := screen(press(start(memoryViewed{}), "enter", "q"))
+
+			require.Contains(t, view, "⏎ files")
+		})
+
+		t.Run("q in the diff goes back to the files", func(t *testing.T) {
+			view := screen(press(start(memoryViewed{}), "enter", "enter", "q"))
+
+			require.Contains(t, view, "o fold")
+		})
+	})
+
+	t.Run("quit", func(t *testing.T) {
+		t.Run("Q quits from the diff", func(t *testing.T) {
+			m := press(start(memoryViewed{}), "enter", "enter")
+
+			_, cmd := m.Update(keyPress("Q"))
+
+			require.NotNil(t, cmd)
+			require.Equal(t, tea.QuitMsg{}, cmd())
+		})
+
+		t.Run("q in the Stack panel does not quit", func(t *testing.T) {
+			_, cmd := start(memoryViewed{}).Update(keyPress("q"))
+
+			require.Nil(t, cmd)
 		})
 	})
 }

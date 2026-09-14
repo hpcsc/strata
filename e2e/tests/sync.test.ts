@@ -16,7 +16,7 @@ describe('the S key', () => {
     expect(screen).toContain('origin/main  1 new commit')
     expect(screen).toMatch(/├─ billing\s+moves onto origin\/main/)
     expect(screen).toMatch(/└─ orders-api\s+moves onto orders-handler/)
-    expect(screen).toContain('esc close')
+    expect(screen).toContain('q close')
   })
 
   it('then enter moves the stacks, and the Stack panel shows the new tree', async () => {

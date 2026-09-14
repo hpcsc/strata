@@ -104,7 +104,7 @@ describe('the strata screen', () => {
     await first.press('v')
 
     await first.waitForText('▸ orders/  2 files')
-    await first.press('q')
+    await first.type('Q')
     await first.waitForText('EXIT:0')
 
     const second = await openStrata(repo.dir)
