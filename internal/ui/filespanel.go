@@ -404,7 +404,7 @@ func (p filesPanel) lines(width int, focused bool) []string {
 				nameStyle = dimText
 			}
 		}
-		name := indent + nameStyle.Render(path.Base(f.Path))
+		name := indent + "  " + nameStyle.Render(path.Base(f.Path))
 		if p.flat {
 			dir, base := shortenPath(f.Path, width-lipgloss.Width(columns))
 			name = dimText.Render(dir) + nameStyle.Render(base)

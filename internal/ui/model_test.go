@@ -291,6 +291,16 @@ func TestModel(t *testing.T) {
 		}
 		require.Fail(t, "no row holds "+texts[0], view)
 	}
+	columnOf := func(t *testing.T, view, text string) int {
+		t.Helper()
+		for _, line := range strings.Split(view, "\n") {
+			if i := strings.Index(line, text); i >= 0 {
+				return ansi.StringWidth(line[:i])
+			}
+		}
+		require.Fail(t, "no row holds "+text, view)
+		return -1
+	}
 	startWithOptions := func(src modelSources, opts ui.Options) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
 			Tree:        memoryTree{tree: src.tree},
@@ -434,6 +444,13 @@ func TestModel(t *testing.T) {
 			view := screen(startWith(nestedFiles(t)))
 
 			requireInOrder(t, view, "common/modules/", "a/", "one.go", "two.go", "b/", "three.go", "README.md")
+		})
+
+		t.Run("a file name starts one step in from its folder name, in line with the folder names beside it", func(t *testing.T) {
+			view := screen(startWith(nestedFiles(t)))
+
+			require.Equal(t, columnOf(t, view, "a/")+2, columnOf(t, view, "one.go"))
+			require.Equal(t, columnOf(t, view, "common/modules/"), columnOf(t, view, "README.md"))
 		})
 
 		t.Run("J moves through the files in the order the tree shows them", func(t *testing.T) {
