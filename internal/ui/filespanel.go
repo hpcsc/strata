@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"path"
 	"strings"
 
@@ -76,6 +75,18 @@ func (p filesPanel) filesIn(folder string) []diff.File {
 		}
 	}
 	return out
+}
+
+// countIn counts the files in folder that the rows below it show: all of
+// them, or only the matching ones while a filter is set.
+func (p filesPanel) countIn(folder string) int {
+	n := 0
+	for _, f := range p.filesIn(folder) {
+		if p.filter.Matches(f.Path) {
+			n++
+		}
+	}
+	return n
 }
 
 // setFiles shows files with the cursor on want. It unfolds the folders that
@@ -368,6 +379,7 @@ func (p filesPanel) lines(width int, focused bool) []string {
 		return []string{"  " + dimText.Render("no files changed")}
 	}
 	const columns = "▌ M ✓ "
+	column := p.countColumn(width)
 	rows := make([]string, 0, len(p.rows))
 	for i, r := range p.rows {
 		gutter := "  "
@@ -381,7 +393,7 @@ func (p filesPanel) lines(width int, focused bool) []string {
 		}
 		indent := strings.Repeat("  ", r.depth)
 		if r.file < 0 {
-			rows = append(rows, gutter+p.folderRow(r, indent, nameStyle))
+			rows = append(rows, gutter+p.folderRow(r, indent, column, nameStyle))
 			continue
 		}
 		f := p.files[r.file]
@@ -402,16 +414,40 @@ func (p filesPanel) lines(width int, focused bool) []string {
 	return window(rows, p.offset, p.height)
 }
 
-func (p filesPanel) folderRow(r fileRow, indent string, nameStyle lipgloss.Style) string {
+func (p filesPanel) folderRow(r fileRow, indent string, column int, nameStyle lipgloss.Style) string {
 	mark := "  "
 	if p.allViewed(r.folder) {
 		mark = viewedText.Render("✓") + " "
 	}
-	if !p.isFolded(r.folder) {
-		return "  " + mark + indent + directoryText.Render("▾ ") + nameStyle.Inherit(directoryText).Render(r.label)
+	arrow := "▾ "
+	if p.isFolded(r.folder) {
+		arrow = "▸ "
 	}
-	return "  " + mark + indent + directoryText.Render("▸ ") + nameStyle.Inherit(directoryText).Render(r.label) +
-		dimText.Render(fmt.Sprintf("  %s", plural(len(p.filesIn(r.folder)), "file")))
+	gap := strings.Repeat(" ", max(2, column-folderEnd(r)))
+	return "  " + mark + indent + directoryText.Render(arrow) + nameStyle.Inherit(directoryText).Render(r.label) +
+		dimText.Render(gap+plural(p.countIn(r.folder), "file"))
+}
+
+// folderEnd is the cell a folder label ends in, past the gutter, the viewed
+// mark, the indent and the arrow.
+func folderEnd(r fileRow) int {
+	return 8 + 2*r.depth + lipgloss.Width(r.label)
+}
+
+// countColumn is the cell the folder counts line up in, or 0 when the panel
+// is too narrow to hold them beside the widest label.
+func (p filesPanel) countColumn(width int) int {
+	label, count := 0, 0
+	for _, r := range p.rows {
+		if r.file < 0 {
+			label = max(label, folderEnd(r))
+			count = max(count, lipgloss.Width(plural(p.countIn(r.folder), "file")))
+		}
+	}
+	if label+2+count > width {
+		return 0
+	}
+	return label + 2
 }
 
 // shortenPath fits a path into width cells. It drops whole directories from

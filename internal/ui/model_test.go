@@ -281,6 +281,16 @@ func TestModel(t *testing.T) {
 			at += i + len(text)
 		}
 	}
+	requireRow := func(t *testing.T, view string, texts ...string) {
+		t.Helper()
+		for _, line := range strings.Split(view, "\n") {
+			if strings.Contains(line, texts[0]) {
+				requireInOrder(t, line, texts...)
+				return
+			}
+		}
+		require.Fail(t, "no row holds "+texts[0], view)
+	}
 	startWithOptions := func(src modelSources, opts ui.Options) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
 			Tree:        memoryTree{tree: src.tree},
@@ -439,6 +449,24 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "1 file  +3 -1")
 		})
 
+		t.Run("every folder row says how many changed files it holds", func(t *testing.T) {
+			view := screen(startWith(nestedFiles(t)))
+
+			requireRow(t, view, "▾ common/modules/", "3 files")
+			requireRow(t, view, "▾ a/", "2 files")
+			requireRow(t, view, "▾ b/", "1 file")
+		})
+
+		t.Run("the panel title says how many files the branch changes", func(t *testing.T) {
+			require.Contains(t, screen(startWith(nestedFiles(t))), "Files · nested · 4 files")
+		})
+
+		t.Run("a folder counts only the files that a filter leaves showing", func(t *testing.T) {
+			view := screen(press(startWith(nestedFiles(t)), "enter", "/", "one", "enter"))
+
+			requireRow(t, view, "▾ a/", "1 file")
+		})
+
 		t.Run("t shows the files as a list of paths", func(t *testing.T) {
 			view := screen(press(startWith(nestedFiles(t)), "t"))
 
@@ -451,14 +479,14 @@ func TestModel(t *testing.T) {
 		t.Run("o on a folder hides its files, and o again shows them", func(t *testing.T) {
 			folded := press(startWith(nestedFiles(t)), "enter", "j", "j", "o")
 
-			require.Contains(t, screen(folded), "▸ b/  1 file")
+			requireRow(t, screen(folded), "▸ b/", "1 file")
 			require.Contains(t, screen(press(folded, "o")), "▾ b/")
 		})
 
 		t.Run("o on a file folds the folder that holds it and selects that folder", func(t *testing.T) {
 			view := screen(press(startWith(nestedFiles(t)), "enter", "o"))
 
-			require.Contains(t, view, "▸ a/  2 files")
+			requireRow(t, view, "▸ a/", "2 files")
 			require.Contains(t, view, "Folder · common/modules/a/")
 		})
 
@@ -476,7 +504,7 @@ func TestModel(t *testing.T) {
 			view := screen(press(startWith(src), "enter", "v", "v"))
 
 			require.True(t, viewed["common/modules/a/two.go"])
-			require.Contains(t, view, "▸ a/  2 files")
+			requireRow(t, view, "▸ a/", "2 files")
 			require.Contains(t, view, "three.go · 3/4")
 		})
 
@@ -485,7 +513,7 @@ func TestModel(t *testing.T) {
 
 			view := screen(m)
 			require.Contains(t, view, "Files · second")
-			require.Contains(t, view, "▸ a/  1 file")
+			requireRow(t, view, "▸ a/", "1 file")
 		})
 
 		t.Run("switching to a branch with the selected file inside a folded folder unfolds that folder", func(t *testing.T) {

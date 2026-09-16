@@ -813,7 +813,11 @@ func (m Model) filesTitle() string {
 	if !ok {
 		return "Files"
 	}
-	return "Files · " + b.Name
+	title := "Files · " + b.Name
+	if len(m.files.files) > 0 {
+		title += " · " + plural(len(m.files.files), "file")
+	}
+	return title
 }
 
 func (m Model) branchTitle() string {
