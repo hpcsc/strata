@@ -449,6 +449,16 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "1 file  +3 -1")
 		})
 
+		t.Run("a folder name too long for the panel loses the start of its path and keeps its count", func(t *testing.T) {
+			tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "rules", Parent: "origin/main", Base: "b0"}}}
+			long := "common/modules/inboundrulebook/rules/"
+			view := screen(startWith(modelSources{tree: tree, viewed: memoryViewed{}, files: map[string][]diff.File{
+				"rules": {file(long + "afterpay.md"), file(long + "zip.md")},
+			}}))
+
+			requireRow(t, view, "\u2026/rules/", "2 files")
+		})
+
 		t.Run("every folder row says how many changed files it holds", func(t *testing.T) {
 			view := screen(startWith(nestedFiles(t)))
 

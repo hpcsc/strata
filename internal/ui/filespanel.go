@@ -423,31 +423,48 @@ func (p filesPanel) folderRow(r fileRow, indent string, column int, nameStyle li
 	if p.isFolded(r.folder) {
 		arrow = "▸ "
 	}
-	gap := strings.Repeat(" ", max(2, column-folderEnd(r)))
-	return "  " + mark + indent + directoryText.Render(arrow) + nameStyle.Inherit(directoryText).Render(r.label) +
+	label := shortenFolder(r.label, column-2-folderStart(r))
+	gap := strings.Repeat(" ", max(2, column-folderStart(r)-lipgloss.Width(label)))
+	return "  " + mark + indent + directoryText.Render(arrow) + nameStyle.Inherit(directoryText).Render(label) +
 		dimText.Render(gap+plural(p.countIn(r.folder), "file"))
 }
 
-// folderEnd is the cell a folder label ends in, past the gutter, the viewed
-// mark, the indent and the arrow.
-func folderEnd(r fileRow) int {
-	return 8 + 2*r.depth + lipgloss.Width(r.label)
+// folderStart is the cell a folder label starts in, past the gutter, the
+// viewed mark, the indent and the arrow.
+func folderStart(r fileRow) int {
+	return 8 + 2*r.depth
 }
 
-// countColumn is the cell the folder counts line up in, or 0 when the panel
-// is too narrow to hold them beside the widest label.
+// countColumn is the cell the folder counts line up in: past the widest
+// folder label, or as far right as the panel holds them when a label is too
+// long. A label that then does not fit is shortened.
 func (p filesPanel) countColumn(width int) int {
 	label, count := 0, 0
 	for _, r := range p.rows {
 		if r.file < 0 {
-			label = max(label, folderEnd(r))
+			label = max(label, folderStart(r)+lipgloss.Width(r.label))
 			count = max(count, lipgloss.Width(plural(p.countIn(r.folder), "file")))
 		}
 	}
-	if label+2+count > width {
-		return 0
+	return min(label+2, width-count)
+}
+
+// shortenFolder fits a folder label into width cells. It drops whole
+// directories from the left, so the deepest folder stays visible. It keeps
+// four cells of that folder, even when the count then runs past the panel.
+func shortenFolder(label string, width int) string {
+	width = max(4, width)
+	if lipgloss.Width(label) <= width {
+		return label
 	}
-	return label + 2
+	segments := strings.Split(strings.TrimSuffix(label, "/"), "/")
+	for len(segments) > 1 {
+		segments = segments[1:]
+		if shortened := "…/" + strings.Join(segments, "/") + "/"; lipgloss.Width(shortened) <= width {
+			return shortened
+		}
+	}
+	return truncate(segments[0]+"/", width)
 }
 
 // shortenPath fits a path into width cells. It drops whole directories from
