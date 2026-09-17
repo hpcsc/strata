@@ -31,6 +31,7 @@ type Tree struct {
 	Trunk    string
 	Current  string
 	Branches []Branch
+	Refs     string
 }
 
 // Connectors returns the tree lines to draw before each branch's name, such

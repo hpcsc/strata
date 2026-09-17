@@ -290,6 +290,99 @@ func TestReader(t *testing.T) {
 			require.Equal(t, "Start the child", commits[1].Subject)
 		})
 	})
+
+	t.Run("refs", func(t *testing.T) {
+		reader := func(repo *gittest.Repo) *stack.Reader {
+			return stack.NewReader(git.New(repo.Dir), "origin/main", []string{"refs/heads/"})
+		}
+		refsOf := func(t *testing.T, repo *gittest.Repo) string {
+			t.Helper()
+			refs, err := reader(repo).Refs(context.Background())
+			require.NoError(t, err)
+			return refs
+		}
+		withBranch := func(t *testing.T) *gittest.Repo {
+			t.Helper()
+			repo := gittest.New(t)
+			repo.SwitchNew("events")
+			repo.Commit("events.go", "package orders\n", "Name the events")
+			return repo
+		}
+
+		t.Run("Read leaves Tree.Refs empty when the reader has no refs", func(t *testing.T) {
+			tree, err := reader(withBranch(t)).Read(context.Background())
+
+			require.NoError(t, err)
+			require.Empty(t, tree.Refs)
+		})
+
+		t.Run("Read fills Tree.Refs with the text of Refs when the reader has refs", func(t *testing.T) {
+			repo := withBranch(t)
+
+			tree, err := reader(repo).WithRefs().Read(context.Background())
+
+			require.NoError(t, err)
+			require.Equal(t, refsOf(t, repo), tree.Refs)
+		})
+
+		t.Run("Refs changes after a commit on a branch", func(t *testing.T) {
+			repo := withBranch(t)
+			before := refsOf(t, repo)
+
+			repo.Commit("events.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+
+			require.NotEqual(t, before, refsOf(t, repo))
+		})
+
+		t.Run("Refs changes after a squash of the commits of a branch", func(t *testing.T) {
+			repo := withBranch(t)
+			repo.Commit("events.go", "package orders\n\ntype Placed struct{}\n", "Add Placed")
+			before := refsOf(t, repo)
+
+			repo.Git("reset", "-q", "--soft", "main")
+			repo.Git("commit", "-q", "-m", "Name the events")
+
+			require.NotEqual(t, before, refsOf(t, repo))
+		})
+
+		t.Run("Refs changes after the trunk moves", func(t *testing.T) {
+			repo := withBranch(t)
+			before := refsOf(t, repo)
+
+			repo.CommitOnOrigin("README.md", "shop\n\nopen\n", "Open the shop")
+			repo.Git("fetch", "-q")
+
+			require.NotEqual(t, before, refsOf(t, repo))
+		})
+
+		t.Run("Refs changes after another worktree checks out a branch", func(t *testing.T) {
+			repo := withBranch(t)
+			repo.Switch("main")
+			before := refsOf(t, repo)
+
+			repo.Worktree("events")
+
+			require.NotEqual(t, before, refsOf(t, repo))
+		})
+
+		t.Run("Refs changes after the worktree of strata checks out a different branch", func(t *testing.T) {
+			repo := withBranch(t)
+			before := refsOf(t, repo)
+
+			repo.Switch("main")
+
+			require.NotEqual(t, before, refsOf(t, repo))
+		})
+
+		t.Run("Refs stays the same after git gc packs the refs", func(t *testing.T) {
+			repo := withBranch(t)
+			before := refsOf(t, repo)
+
+			repo.Git("gc", "-q")
+
+			require.Equal(t, before, refsOf(t, repo))
+		})
+	})
 }
 
 func TestFindTrunk(t *testing.T) {

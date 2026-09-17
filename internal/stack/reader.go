@@ -23,13 +23,31 @@ type Reader struct {
 	git      runner
 	trunk    string
 	patterns []string
+	withRefs bool
 }
 
 func NewReader(git runner, trunk string, patterns []string) *Reader {
 	return &Reader{git: git, trunk: trunk, patterns: patterns}
 }
 
+// WithRefs returns a reader whose Read also fills Tree.Refs, with two more git
+// commands.
+func (r *Reader) WithRefs() *Reader {
+	copied := *r
+	copied.withRefs = true
+	return &copied
+}
+
 func (r *Reader) Read(ctx context.Context) (Tree, error) {
+	var refs string
+	if r.withRefs {
+		// Refs runs before the tree read, so a ref that moves during the read
+		// shows at the next Refs
+		var err error
+		if refs, err = r.Refs(ctx); err != nil {
+			return Tree{}, err
+		}
+	}
 	tips, err := r.tips(ctx)
 	if err != nil {
 		return Tree{}, err
@@ -83,7 +101,22 @@ func (r *Reader) Read(ctx context.Context) (Tree, error) {
 	if err := grp.Wait(); err != nil {
 		return Tree{}, err
 	}
-	return Tree{Trunk: r.trunk, Current: current, Branches: branches}, nil
+	return Tree{Trunk: r.trunk, Current: current, Branches: branches, Refs: refs}, nil
+}
+
+// Refs returns text that changes when a branch or the trunk moves, and when a
+// worktree checks out a different branch.
+func (r *Reader) Refs(ctx context.Context) (string, error) {
+	branches, err := r.git.Run(ctx, append([]string{"for-each-ref",
+		"--format=%(objectname)%00%(worktreepath)%00%(refname)"}, r.patterns...)...)
+	if err != nil {
+		return "", err
+	}
+	trunk, err := r.git.Run(ctx, "rev-parse", "--verify", r.trunk)
+	if err != nil {
+		return "", err
+	}
+	return trunk + branches, nil
 }
 
 func (r *Reader) Commits(ctx context.Context, b Branch) ([]Commit, error) {
