@@ -11,6 +11,7 @@ import (
 
 type TreeReader interface {
 	Read(ctx context.Context) (stack.Tree, error)
+	Refs(ctx context.Context) (string, error)
 	Commits(ctx context.Context, b stack.Branch) ([]stack.Commit, error)
 }
 

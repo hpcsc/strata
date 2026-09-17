@@ -33,6 +33,18 @@ type treeLoaded struct {
 	notice string
 }
 
+type CheckRefs struct{}
+
+type refsRead struct {
+	refs string
+	err  error
+}
+
+type treeChanged struct {
+	tree stack.Tree
+	err  error
+}
+
 type planLoaded struct {
 	plan       restack.Plan
 	err        error
@@ -98,6 +110,12 @@ type Model struct {
 	spins      int
 	notice     string
 	rebaseDone bool
+	// refs is the text of the refs that the tree on the screen comes from.
+	refs     string
+	checking bool
+	// wantCheck asks for a check that starts when no check runs and strata is
+	// not busy.
+	wantCheck bool
 }
 
 func New(ctx context.Context, tree stack.Tree, sources Sources, opts Options) Model {
@@ -110,6 +128,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources, opts Options) Mo
 		files:   newFilesPanel(sources.Viewed),
 		diff:    diffPanel{theme: sources.Highlighter.Theme()},
 		split:   opts.Split,
+		refs:    tree.Refs,
 	}
 	m.initial = m.showSelection()
 	return m
@@ -120,6 +139,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := m.update(msg)
+	if !m.wantCheck || m.checking || m.busy() {
+		return m, cmd
+	}
+	m.wantCheck, m.checking = false, true
+	return m, tea.Batch(cmd, m.readRefs())
+}
+
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -138,7 +166,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status, m.notice = msg.status, msg.notice
 		m.cache.clearCommitsAndErrors()
 		m.keepFile()
+		m.refs = msg.tree.Refs
 		m.stack.plan, m.rebaseDone = nil, false
+		m.stack.replace(msg.tree)
+		m.layout()
+		return m, m.showSelection()
+	case CheckRefs:
+		m.wantCheck = true
+		return m, nil
+	case refsRead:
+		if msg.err != nil || msg.refs == m.refs {
+			m.checking = false
+			return m, nil
+		}
+		if m.busy() {
+			m.checking, m.wantCheck = false, true
+			return m, nil
+		}
+		return m, m.readChangedTree()
+	case treeChanged:
+		m.checking = false
+		if msg.err != nil {
+			return m, nil
+		}
+		if m.busy() {
+			m.wantCheck = true
+			return m, nil
+		}
+		m.keepFile()
+		m.refs = msg.tree.Refs
 		m.stack.replace(msg.tree)
 		m.layout()
 		return m, m.showSelection()
@@ -214,7 +270,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.help {
 		m.help = false
 		return m, nil
@@ -408,7 +464,7 @@ func (m *Model) keepFile() {
 	}
 }
 
-func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) promptKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	changed, cancelled := m.prompt.edit(msg)
 	switch {
 	case cancelled:
@@ -644,6 +700,28 @@ func (m Model) readTree(status, notice string) tea.Cmd {
 	return func() tea.Msg {
 		t, err := tree.Read(ctx)
 		return treeLoaded{tree: t, err: err, status: status, notice: notice}
+	}
+}
+
+// busy reports whether a new tree must wait: it closes the sync plan and
+// cancels a delete that waits for y.
+func (m Model) busy() bool {
+	return m.work != nil || m.stack.plan != nil || m.stack.deletion != nil
+}
+
+func (m Model) readRefs() tea.Cmd {
+	ctx, tree := m.ctx, m.sources.Tree
+	return func() tea.Msg {
+		refs, err := tree.Refs(ctx)
+		return refsRead{refs: refs, err: err}
+	}
+}
+
+func (m Model) readChangedTree() tea.Cmd {
+	ctx, tree := m.ctx, m.sources.Tree
+	return func() tea.Msg {
+		t, err := tree.Read(ctx)
+		return treeChanged{tree: t, err: err}
 	}
 }
 

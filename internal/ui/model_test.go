@@ -27,13 +27,18 @@ import (
 type memoryTree struct {
 	tree    stack.Tree
 	commits map[string][]stack.Commit
+	refsErr error
 }
 
-func (m memoryTree) Read(context.Context) (stack.Tree, error) {
+func (m *memoryTree) Read(context.Context) (stack.Tree, error) {
 	return m.tree, nil
 }
 
-func (m memoryTree) Commits(_ context.Context, b stack.Branch) ([]stack.Commit, error) {
+func (m *memoryTree) Refs(context.Context) (string, error) {
+	return m.tree.Refs, m.refsErr
+}
+
+func (m *memoryTree) Commits(_ context.Context, b stack.Branch) ([]stack.Commit, error) {
 	return m.commits[b.Name], nil
 }
 
@@ -311,7 +316,7 @@ func TestModel(t *testing.T) {
 	}
 	startWithOptions := func(src modelSources, opts ui.Options) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
-			Tree:        memoryTree{tree: src.tree},
+			Tree:        &memoryTree{tree: src.tree},
 			Diffs:       memoryDiffs{files: src.files, patches: src.patches},
 			Highlighter: plainText{},
 			Viewed:      src.viewed,
@@ -326,7 +331,7 @@ func TestModel(t *testing.T) {
 	start := func(viewed memoryViewed) tea.Model {
 		tree, files := stackOf()
 		m := ui.New(context.Background(), tree, ui.Sources{
-			Tree:        memoryTree{tree: tree, commits: map[string][]stack.Commit{"events": {{Hash: "abc1234", Subject: "Name the events", Age: "2 hours ago"}}}},
+			Tree:        &memoryTree{tree: tree, commits: map[string][]stack.Commit{"events": {{Hash: "abc1234", Subject: "Name the events", Age: "2 hours ago"}}}},
 			Diffs:       memoryDiffs{files: files},
 			Highlighter: plainText{},
 			Viewed:      viewed,
@@ -435,7 +440,7 @@ func TestModel(t *testing.T) {
 			tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "rules", Parent: "origin/main", Base: "b0"}}}
 			long := "common/modules/inboundrulebook/rules/afterpay-us-bankruptcy.md"
 			m := ui.New(context.Background(), tree, ui.Sources{
-				Tree:        memoryTree{tree: tree},
+				Tree:        &memoryTree{tree: tree},
 				Diffs:       memoryDiffs{files: map[string][]diff.File{"rules": {file(long)}}},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
@@ -657,7 +662,7 @@ func TestModel(t *testing.T) {
 		startWithSyncOptions := func(sync ui.Syncer, opts ui.Options) tea.Model {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{
-				Tree:        memoryTree{tree: tree},
+				Tree:        &memoryTree{tree: tree},
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
@@ -1043,7 +1048,7 @@ func TestModel(t *testing.T) {
 		t.Run("colours the diff with the highlighter's theme", func(t *testing.T) {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{
-				Tree:        memoryTree{tree: tree},
+				Tree:        &memoryTree{tree: tree},
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{theme: syntax.Theme{Inserted: syntax.Color{R: 10, G: 200, B: 30, Set: true}}},
 				Viewed:      memoryViewed{},
@@ -1059,7 +1064,7 @@ func TestModel(t *testing.T) {
 		t.Run("tints the diff with colours of the 256-colour palette when the terminal has only those", func(t *testing.T) {
 			tree, files := stackOf()
 			m := ui.New(context.Background(), tree, ui.Sources{
-				Tree:        memoryTree{tree: tree},
+				Tree:        &memoryTree{tree: tree},
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
@@ -1234,7 +1239,7 @@ func TestModel(t *testing.T) {
 		startWithDeleter := func(deleter ui.Deleter, before, after stack.Tree) tea.Model {
 			_, files := stackOf()
 			m := ui.New(context.Background(), before, ui.Sources{
-				Tree:        memoryTree{tree: after},
+				Tree:        &memoryTree{tree: after},
 				Diffs:       memoryDiffs{files: files},
 				Highlighter: plainText{},
 				Viewed:      memoryViewed{},
@@ -1493,6 +1498,183 @@ func TestModel(t *testing.T) {
 
 			require.Contains(t, view, "content of common/modules/a/one.go on first")
 			require.NotContains(t, view, "git diff failed")
+		})
+
+		startChecking := func(tree *memoryTree, sources ui.Sources) tea.Model {
+			sources.Tree, sources.Highlighter, sources.Viewed = tree, plainText{}, memoryViewed{}
+			m := ui.New(context.Background(), tree.tree, sources, defaults())
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			return settle(sized, m.Init())
+		}
+		check := func(m tea.Model) tea.Model {
+			m, cmd := m.Update(ui.CheckRefs{})
+			return settle(m, cmd)
+		}
+		before := func(t *testing.T) modelSources {
+			t.Helper()
+			src := twoBranches(t)
+			src.tree.Refs = "refs before"
+			src.tree.Branches[0].Tip, src.tree.Branches[1].Tip = "f1f1f1f1", "s1s1s1s1"
+			return src
+		}
+		firstMoved := func(t *testing.T) stack.Tree {
+			t.Helper()
+			tree := before(t).tree
+			tree.Refs = "refs after"
+			tree.Branches[0].Tip, tree.Branches[0].Commits = "f2f2f2f2", 3
+			return tree
+		}
+
+		t.Run("a check shows the new commits of a branch that moved", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}})
+			tree.tree = firstMoved(t)
+
+			view := screen(check(m))
+
+			requireRow(t, view, "first", "3 commits")
+		})
+
+		t.Run("a check keeps the tree on the screen when the refs did not change", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}})
+			sameRefs := firstMoved(t)
+			sameRefs.Refs = "refs before"
+			tree.tree = sameRefs
+
+			view := screen(check(m))
+
+			requireRow(t, view, "first", "0 commits")
+		})
+
+		t.Run("a check after r keeps the tree on the screen when the refs did not change after r", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}})
+			tree.tree = firstMoved(t)
+			m = press(m, "r")
+			sameRefs := firstMoved(t)
+			sameRefs.Branches[0].Commits = 5
+			tree.tree = sameRefs
+
+			view := screen(check(m))
+
+			requireRow(t, view, "first", "3 commits")
+		})
+
+		t.Run("a check that cannot read the refs shows no error and keeps the tree", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}})
+			tree.tree, tree.refsErr = firstMoved(t), errors.New("git for-each-ref failed")
+
+			view := screen(check(m))
+
+			require.NotContains(t, view, "git for-each-ref failed")
+			requireRow(t, view, "first", "0 commits")
+		})
+
+		t.Run("a check keeps the viewed count of a branch that did not move", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}}), "enter", "v", "h", "]")
+			moved := before(t).tree
+			moved.Refs = "refs after"
+			moved.Branches[1].Tip, moved.Branches[1].Commits = "s2s2s2s2", 4
+			tree.tree = moved
+
+			view := screen(check(m))
+
+			requireRow(t, view, "second", "4 commits")
+			requireRow(t, view, "first", "✓ 1/3 viewed")
+		})
+
+		t.Run("a check keeps the scroll position of a diff whose file did not change", func(t *testing.T) {
+			src := threeHunks(t)
+			src.tree.Refs = "refs before"
+			tree := &memoryTree{tree: src.tree}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files, patches: src.patches}}), "enter", "enter", "n")
+			moved := threeHunks(t).tree
+			moved.Refs = "refs after"
+			moved.Branches[0].Tip, moved.Branches[0].Commits = "f2f2f2f2", 2
+			tree.tree = moved
+
+			view := screen(check(m))
+
+			requireRow(t, view, "nested", "2 commits")
+			require.Contains(t, view, "@@ -100,30 +100,30 @@")
+			require.NotContains(t, view, "@@ -1,30 +1,30 @@")
+		})
+
+		t.Run("a check leaves the sync plan open, and runs when the plan closes", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			sync := &memorySync{plan: restack.Plan{Tree: src.tree}}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}, Sync: sync}), "S")
+			tree.tree = firstMoved(t)
+
+			m = check(m)
+
+			require.Contains(t, screen(m), "Stack · sync plan")
+			view := screen(press(m, "esc"))
+			require.NotContains(t, view, "sync plan")
+			requireRow(t, view, "first", "3 commits")
+		})
+
+		t.Run("a check keeps a delete that waits for y", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			deleter := &memoryDeleter{}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}, Deleter: deleter}), "j", "d")
+			tree.tree = firstMoved(t)
+
+			m = check(m)
+
+			require.Contains(t, screen(m), "Stack · delete 1 branch")
+			press(m, "y")
+			require.Equal(t, [][]string{{"second"}}, deleter.deleted)
+		})
+
+		t.Run("a check that arrives while a delete waits for y runs when the delete is cancelled", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}, Deleter: &memoryDeleter{}}), "j", "d")
+			tree.tree = firstMoved(t)
+			m = check(m)
+
+			view := screen(press(m, "n"))
+
+			require.NotContains(t, view, "Stack · delete")
+			requireRow(t, view, "first", "3 commits")
+		})
+
+		t.Run("a check that arrives while another check runs starts when that check ends", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}})
+			m, readRefs := m.Update(ui.CheckRefs{})
+			unchanged := readRefs()
+			tree.tree = firstMoved(t)
+			m, _ = m.Update(ui.CheckRefs{})
+
+			m, cmd := m.Update(unchanged)
+
+			requireRow(t, screen(settle(m, cmd)), "first", "3 commits")
+		})
+
+		t.Run("a check keeps the footer notice", func(t *testing.T) {
+			src := before(t)
+			tree := &memoryTree{tree: src.tree}
+			m := press(startChecking(tree, ui.Sources{Diffs: memoryDiffs{files: src.files}, Deleter: &memoryDeleter{}}), "j", "d", "y")
+			tree.tree = firstMoved(t)
+
+			view := screen(check(m))
+
+			require.Contains(t, view, "Deleted second (was s1s1s1s).")
+			requireRow(t, view, "first", "3 commits")
 		})
 	})
 }
