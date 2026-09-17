@@ -38,15 +38,23 @@ func (m memoryTree) Commits(_ context.Context, b stack.Branch) ([]stack.Commit, 
 }
 
 type memoryDiffs struct {
-	files   map[string][]diff.File
-	patches map[string]diff.Patch
+	files         map[string][]diff.File
+	patches       map[string]diff.Patch
+	failures      map[string]error
+	patchFailures map[string]error
 }
 
 func (m memoryDiffs) Files(_ context.Context, _, branch string) ([]diff.File, error) {
+	if err := m.failures[branch]; err != nil {
+		return nil, err
+	}
 	return m.files[branch], nil
 }
 
 func (m memoryDiffs) Patch(_ context.Context, _, branch string, f diff.File) (diff.Patch, error) {
+	if err := m.patchFailures[f.Path]; err != nil {
+		return diff.Patch{}, err
+	}
 	if patch, ok := m.patches[f.Path]; ok {
 		patch.File = f
 		return patch, nil
@@ -1397,6 +1405,94 @@ func TestModel(t *testing.T) {
 			view := screen(press(startDeleting(deleter), "j", "j", "d", "y"))
 
 			require.Contains(t, view, "strata deleted no branch: cannot lock ref")
+		})
+	})
+
+	t.Run("refresh", func(t *testing.T) {
+		startWithSources := func(tree *memoryTree, diffs memoryDiffs) tea.Model {
+			m := ui.New(context.Background(), tree.tree, ui.Sources{
+				Tree:        tree,
+				Diffs:       diffs,
+				Highlighter: plainText{},
+				Viewed:      memoryViewed{},
+			}, defaults())
+			var sized tea.Model = m
+			sized, _ = sized.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+			return settle(sized, m.Init())
+		}
+
+		t.Run("r keeps the viewed count of a branch that did not move", func(t *testing.T) {
+			view := screen(press(startWith(twoBranches(t)), "enter", "v", "h", "]", "r"))
+
+			requireRow(t, view, "first", "✓ 1/3 viewed")
+		})
+
+		t.Run("r loads the files again of a branch that moved", func(t *testing.T) {
+			src := twoBranches(t)
+			tree, diffs := &memoryTree{tree: src.tree}, memoryDiffs{files: src.files}
+			m := startWithSources(tree, diffs)
+			moved := twoBranches(t).tree
+			moved.Branches[0].Tip = "f2f2f2f"
+			tree.tree = moved
+			diffs.files["first"] = []diff.File{file("common/modules/d/five.go")}
+
+			view := screen(press(m, "r"))
+
+			require.Contains(t, view, "five.go")
+			require.NotContains(t, view, "three.go")
+		})
+
+		t.Run("r keeps the scroll position of a diff whose file did not change on a branch that moved", func(t *testing.T) {
+			src := threeHunks(t)
+			tree := &memoryTree{tree: src.tree}
+			m := press(startWithSources(tree, memoryDiffs{files: src.files, patches: src.patches}), "enter", "enter", "n")
+			moved := threeHunks(t).tree
+			moved.Branches[0].Tip = "f2f2f2f"
+			tree.tree = moved
+
+			view := screen(press(m, "r"))
+
+			require.Contains(t, view, "@@ -100,30 +100,30 @@")
+			require.NotContains(t, view, "@@ -1,30 +1,30 @@")
+		})
+
+		t.Run("r loads the commits again, so their ages change", func(t *testing.T) {
+			src := twoBranches(t)
+			tree := &memoryTree{tree: src.tree, commits: map[string][]stack.Commit{
+				"first": {{Hash: "abc1234", Subject: "Add one", Age: "2 seconds ago"}},
+			}}
+			m := startWithSources(tree, memoryDiffs{files: src.files})
+			tree.commits["first"] = []stack.Commit{{Hash: "abc1234", Subject: "Add one", Age: "3 minutes ago"}}
+
+			view := screen(press(m, "r"))
+
+			require.Contains(t, view, "Add one 3 minutes ago")
+		})
+
+		t.Run("r loads a file list again when its load failed", func(t *testing.T) {
+			src := twoBranches(t)
+			diffs := memoryDiffs{files: src.files, failures: map[string]error{"first": errors.New("git diff failed")}}
+			m := startWithSources(&memoryTree{tree: src.tree}, diffs)
+			require.Contains(t, screen(m), "git diff failed")
+			delete(diffs.failures, "first")
+
+			view := screen(press(m, "r"))
+
+			require.Contains(t, view, "one.go")
+			require.NotContains(t, view, "git diff failed")
+		})
+
+		t.Run("r loads a diff again when its load failed", func(t *testing.T) {
+			src := twoBranches(t)
+			diffs := memoryDiffs{files: src.files, patchFailures: map[string]error{"common/modules/a/one.go": errors.New("git diff failed")}}
+			m := press(startWithSources(&memoryTree{tree: src.tree}, diffs), "enter")
+			require.Contains(t, screen(m), "git diff failed")
+			delete(diffs.patchFailures, "common/modules/a/one.go")
+
+			view := screen(press(m, "r"))
+
+			require.Contains(t, view, "content of common/modules/a/one.go on first")
+			require.NotContains(t, view, "git diff failed")
 		})
 	})
 }

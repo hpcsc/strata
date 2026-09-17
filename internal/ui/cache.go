@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"maps"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hpcsc/strata/internal/diff"
@@ -61,6 +62,13 @@ func (c *cache) clear() {
 	c.patches = map[string]patchResult{}
 	c.commits = map[string]commitList{}
 	c.inFlight = map[string]bool{}
+}
+
+// A commit list loads again because the ages in it change.
+func (c *cache) clearCommitsAndErrors() {
+	c.commits = map[string]commitList{}
+	maps.DeleteFunc(c.files, func(_ string, list fileList) bool { return list.err != nil })
+	maps.DeleteFunc(c.patches, func(_ string, result patchResult) bool { return result.err != nil })
 }
 
 func (c *cache) fileList(b stack.Branch) (fileList, bool) {
@@ -155,9 +163,11 @@ func (c *cache) start(kind, key string) bool {
 }
 
 func branchKey(b stack.Branch) string {
-	return b.Base + ".." + b.Name
+	return b.Base + ".." + b.Name + "@" + b.Tip
 }
 
+// The tip stays out of the key, so a diff stays loaded when its branch moves
+// and the file does not change.
 func fileKey(b stack.Branch, f diff.File) string {
-	return branchKey(b) + "\x00" + f.OldBlob + "\x00" + f.NewBlob + "\x00" + f.Path
+	return b.Base + ".." + b.Name + "\x00" + f.OldBlob + "\x00" + f.NewBlob + "\x00" + f.Path
 }

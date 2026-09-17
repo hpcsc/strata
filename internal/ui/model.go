@@ -136,8 +136,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status, m.notice = msg.status, msg.notice
-		m.cache.clear()
-		m.filesKey = ""
+		m.cache.clearCommitsAndErrors()
+		m.keepFile()
 		m.stack.plan, m.rebaseDone = nil, false
 		m.stack.replace(msg.tree)
 		m.layout()
@@ -677,11 +677,12 @@ func (m *Model) showSelection() tea.Cmd {
 	}
 	f, ok := m.files.selected()
 	if !ok {
-		notice := "no files changed"
-		if !ready {
-			notice = "loading…"
+		if ready {
+			m.diff.showNotice(key, "no files changed")
+		} else {
+			// the diff keeps its key, so it keeps its scroll position when the same file shows again
+			m.diff.showNotice(m.diff.key, "loading…")
 		}
-		m.diff.showNotice(key, notice)
 		return tea.Batch(cmds...)
 	}
 	cmds = append(cmds, m.cache.requestPatch(b, f))
