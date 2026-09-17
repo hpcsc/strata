@@ -10,6 +10,7 @@ require (
 	github.com/bluekeyes/go-gitdiff v0.9.0
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.8
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.24
 	github.com/stretchr/testify v1.12.1
