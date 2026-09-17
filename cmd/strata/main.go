@@ -20,6 +20,7 @@ import (
 	"github.com/hpcsc/strata/internal/diff"
 	"github.com/hpcsc/strata/internal/git"
 	"github.com/hpcsc/strata/internal/progress"
+	"github.com/hpcsc/strata/internal/refs"
 	"github.com/hpcsc/strata/internal/release"
 	"github.com/hpcsc/strata/internal/restack"
 	"github.com/hpcsc/strata/internal/stack"
@@ -120,18 +121,23 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 	patterns := patternsOf(cmd)
 
 	reader := stack.NewReader(repo, trunk, patterns)
-	tree, err := reader.Read(ctx)
-	if err != nil {
-		return err
-	}
-	if len(tree.Branches) == 0 {
-		return fmt.Errorf("no branches ahead of %s", trunk)
-	}
 	if cmd.Bool("list") {
+		tree, err := readTree(ctx, reader, trunk)
+		if err != nil {
+			return err
+		}
 		printTree(os.Stdout, tree)
 		return nil
 	}
 	settings, err := loadConfig(cmd)
+	if err != nil {
+		return err
+	}
+	autoRefresh := autoRefreshOf(cmd, settings)
+	if autoRefresh {
+		reader = reader.WithRefs()
+	}
+	tree, err := readTree(ctx, reader, trunk)
 	if err != nil {
 		return err
 	}
@@ -161,8 +167,25 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		Sync:        sync,
 		Deleter:     deleter,
 	}, ui.Options{Keys: settings.Keys, Split: settings.Split})
-	_, err = tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile())).Run()
+	program := tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile()))
+	if autoRefresh {
+		watchCtx, stopWatch := context.WithCancel(ctx)
+		defer stopWatch()
+		go refs.NewWatcher(repo).Run(watchCtx, func() { program.Send(ui.CheckRefs{}) })
+	}
+	_, err = program.Run()
 	return err
+}
+
+func readTree(ctx context.Context, reader *stack.Reader, trunk string) (stack.Tree, error) {
+	tree, err := reader.Read(ctx)
+	if err != nil {
+		return stack.Tree{}, err
+	}
+	if len(tree.Branches) == 0 {
+		return stack.Tree{}, fmt.Errorf("no branches ahead of %s", trunk)
+	}
+	return tree, nil
 }
 
 func loadConfig(cmd *cli.Command) (config.Config, error) {
@@ -174,6 +197,12 @@ func loadConfig(cmd *cli.Command) (config.Config, error) {
 		return config.Default(), nil
 	}
 	return settings, err
+}
+
+// A refresh with --remote reads all the branches of the remote, which can take
+// many seconds.
+func autoRefreshOf(cmd *cli.Command, settings config.Config) bool {
+	return settings.AutoRefresh && !cmd.Bool("remote")
 }
 
 func themeOf(cmd *cli.Command, settings config.Config) string {

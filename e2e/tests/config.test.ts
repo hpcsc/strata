@@ -48,6 +48,31 @@ describe('the config file', () => {
     expect(screen).toContain('│+ ')
   })
 
+  it('auto_refresh = true shows a new commit on the checked-out branch with no key press', async () => {
+    const repo = ordersRepo()
+    const strata = await openStrata(repo.dir, [], { XDG_CONFIG_HOME: configHome('auto_refresh = true\n') })
+    await strata.waitForText('Branch · orders-handler')
+
+    repo.commit('orders/reasons.go', 'package orders\n', 'Name the cancel reasons')
+
+    const screen = await strata.waitForText('Name the cancel reasons')
+    expect(screen).toMatch(/orders-handler\s+3 commits/)
+  })
+
+  it('without auto_refresh, a new commit shows only after r', async () => {
+    const repo = ordersRepo()
+    const strata = await openStrata(repo.dir)
+    await strata.waitForText('Branch · orders-handler')
+
+    repo.commit('orders/reasons.go', 'package orders\n', 'Name the cancel reasons')
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    expect(await strata.text()).not.toContain('Name the cancel reasons')
+
+    await strata.press('r')
+
+    await strata.waitForText('Name the cancel reasons')
+  })
+
   it('an unknown action in the config file stops strata with the name of the action', async () => {
     const result = await runStrata(ordersRepo().dir, [], { XDG_CONFIG_HOME: configHome('[keys.diff]\nnxt_hunk = "n"\n') })
 

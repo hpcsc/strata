@@ -22,11 +22,18 @@ func TestConfig(t *testing.T) {
 			require.Equal(t, config.Default(), c)
 		})
 
+		t.Run("auto refresh is off when the file does not turn it on", func(t *testing.T) {
+			c, err := config.Parse("theme = \"github\"\n")
+
+			require.NoError(t, err)
+			require.False(t, c.AutoRefresh)
+		})
+
 		t.Run("takes the options from the file", func(t *testing.T) {
-			c, err := config.Parse("theme = \"github\"\nsplit = false\n")
+			c, err := config.Parse("theme = \"github\"\nsplit = false\nauto_refresh = true\n")
 
 			want := config.Default()
-			want.Theme, want.Split = "github", false
+			want.Theme, want.Split, want.AutoRefresh = "github", false, true
 			require.NoError(t, err)
 			require.Equal(t, want, c)
 		})
@@ -65,7 +72,7 @@ previous_file = "H"
 
 		t.Run("reads back the file that TOML writes", func(t *testing.T) {
 			want := config.Default()
-			want.Theme, want.Split = "github", false
+			want.Theme, want.Split, want.AutoRefresh = "github", false, true
 			for a, keys := range map[keymap.Action][]string{
 				keymap.Quit:         {"ctrl+q"},
 				keymap.StackTop:     {"ctrl+g"},

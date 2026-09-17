@@ -14,9 +14,10 @@ import (
 )
 
 type Config struct {
-	Theme string
-	Split bool
-	Keys  keymap.Keymap
+	Theme       string
+	Split       bool
+	AutoRefresh bool
+	Keys        keymap.Keymap
 }
 
 func Default() Config {
@@ -50,9 +51,10 @@ func Load(path string) (Config, error) {
 }
 
 type file struct {
-	Theme *string `toml:"theme"`
-	Split *bool   `toml:"split"`
-	Keys  any     `toml:"keys"`
+	Theme       *string `toml:"theme"`
+	Split       *bool   `toml:"split"`
+	AutoRefresh *bool   `toml:"auto_refresh"`
+	Keys        any     `toml:"keys"`
 }
 
 func Parse(text string) (Config, error) {
@@ -67,6 +69,9 @@ func Parse(text string) (Config, error) {
 	}
 	if f.Split != nil {
 		c.Split = *f.Split
+	}
+	if f.AutoRefresh != nil {
+		c.AutoRefresh = *f.AutoRefresh
 	}
 
 	var problems []error

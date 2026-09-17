@@ -39,6 +39,7 @@ func (c Config) TOML() string {
 	writeLines(&b, []line{
 		{"theme = " + strconv.Quote(c.Theme), "the chroma style of the code and the diff"},
 		{"split = " + strconv.FormatBool(c.Split), "start with the diff side by side"},
+		{"auto_refresh = " + strconv.FormatBool(c.AutoRefresh), "refresh when git changes a branch, the trunk or a checkout"},
 	})
 	for _, t := range keymap.Tables() {
 		fmt.Fprintf(&b, "\n[%s]  # %s\n", t, tableNotes[t])

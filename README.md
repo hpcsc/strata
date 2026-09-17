@@ -157,7 +157,7 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `v` | Mark the file viewed and go to the next file. |
 | | `t` | Show the files as a tree or as a list of paths. |
 | | `/` | Search the panel that has the focus. See [Search](#search). |
-| | `r` | Read the branches again. |
+| | `r` | Read the branches again. See [Refresh](#refresh). |
 | | `S` | Get the trunk from the remote and show the plan of a sync. See [Sync](#sync). |
 | | `?` | Show all keys. |
 | | `Q` | Quit. |
@@ -178,6 +178,26 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `n` `p` | Go to the next or previous hunk. While a search is on, `n` and `N` go to the next or previous match. |
 | | `J` `K` | Go to the next or previous file. The files in a folded folder do not count. |
 | | `q` `h` `esc` | Go back to the files. In zoom, these keys end the zoom first. |
+
+## Refresh
+
+`r` reads the branches again. strata keeps the files and diffs that it loaded for each branch that did not
+move. It loads again the commit lists, so their ages change, and each file list or diff whose load failed.
+
+With `auto_refresh = true` in the [config file](#config-file), strata also refreshes by itself when git
+changes a branch, the trunk or the branch that a worktree checks out. For example, a commit, an amend or a
+fetch in another terminal shows in strata with no key press.
+
+- strata watches the files in `.git` that hold the refs, and checks the refs each 30 seconds too. When it
+  cannot watch these files, it checks the refs each 2 seconds.
+- A refresh keeps the selected branch and file, the viewed counts, and the scroll position of a diff whose
+  file did not change.
+- strata does not refresh by itself while the sync plan shows, while a delete waits for `y`, or while a move
+  or a delete runs. It refreshes after that.
+- strata does not refresh by itself with `--remote`, because a read of the branches of a remote can take
+  many seconds.
+
+[docs/auto-refresh.md](docs/auto-refresh.md) tells how the automatic refresh works.
 
 ## Search
 
@@ -202,6 +222,7 @@ not exist, strata uses its defaults.
 ```toml
 theme = "github"
 split = false
+auto_refresh = true
 
 [keys]
 quit = ["Q", "ctrl+q"]
@@ -215,6 +236,8 @@ previous_file = "H"
 
 - `theme` is the chroma style of the code and the diff. `--theme` overrides it.
 - `split = false` starts the diff unified, not side by side.
+- `auto_refresh = true` makes strata read the branches again when git changes them. See
+  [Refresh](#refresh). It is off by default.
 - An action takes one key, a list of keys, or `[]` for no key. The keys replace the default keys of the
   action. In this example, `J` and `K` do nothing in the diff.
 
