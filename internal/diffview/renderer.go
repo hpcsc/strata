@@ -20,24 +20,31 @@ type renderer struct {
 	palette     palette
 }
 
-func newRenderer(src Source, width int, find search.Query, palette palette) renderer {
+func newRenderer(src Source, blocks []block, width int, find search.Query, palette palette) renderer {
 	widest := 1
-	for _, h := range src.Patch.Hunks {
-		for _, l := range h.Lines {
+	for _, b := range blocks {
+		for _, l := range b.lines {
 			widest = max(widest, len(strconv.Itoa(max(l.OldNumber, l.NewNumber))))
 		}
 	}
 	return renderer{src: src, width: width, numberWidth: widest, find: find, palette: palette}
 }
 
-// unified returns the rows of a hunk, and the index of each row that starts
-// a line with a match.
-func (r renderer) unified(h diff.Hunk) ([]string, []int) {
-	marks := changedWords(h.Lines)
+func (r renderer) rows(lines []diff.Line, split bool) ([]string, []int) {
+	if split {
+		return r.split(lines)
+	}
+	return r.unified(lines)
+}
+
+// unified returns the rows of the lines, and the index of each row that
+// starts a line with a match.
+func (r renderer) unified(lines []diff.Line) ([]string, []int) {
+	marks := changedWords(lines)
 	contentWidth := r.width - ansi.StringWidth(r.unifiedGutter(diff.Line{}, true))
 	var out []string
 	var matches []int
-	for i, l := range h.Lines {
+	for i, l := range lines {
 		found := r.found(l)
 		if len(found) > 0 {
 			matches = append(matches, len(out))
@@ -60,21 +67,21 @@ func (r renderer) unifiedGutter(l diff.Line, first bool) string {
 		paintText(sign+" ", style{fg: signColor, bg: r.palette.lineBackground(l.Kind)})
 }
 
-// split returns the rows of a hunk side by side, and the index of each row
-// that starts a pair of lines with a match on either side.
-func (r renderer) split(h diff.Hunk) ([]string, []int) {
-	marks := changedWords(h.Lines)
+// split returns the rows of the lines side by side, and the index of each
+// row that starts a pair of lines with a match on either side.
+func (r renderer) split(lines []diff.Line) ([]string, []int) {
+	marks := changedWords(lines)
 	leftWidth := (r.width - 1) / 2
 	rightWidth := r.width - 1 - leftWidth
 	separator := paintText("│", style{fg: r.palette.separator})
 	var out []string
 	var matches []int
-	for _, pair := range sideBySide(h.Lines) {
-		if r.pairFound(h.Lines, pair) {
+	for _, pair := range sideBySide(lines) {
+		if r.pairFound(lines, pair) {
 			matches = append(matches, len(out))
 		}
-		left, leftFill := r.sideRows(h.Lines, pair.left, marks, leftWidth, true)
-		right, rightFill := r.sideRows(h.Lines, pair.right, marks, rightWidth, false)
+		left, leftFill := r.sideRows(lines, pair.left, marks, leftWidth, true)
+		right, rightFill := r.sideRows(lines, pair.right, marks, rightWidth, false)
 		for k := 0; k < max(len(left), len(right)); k++ {
 			out = append(out, rowOrFill(left, k, leftWidth, leftFill)+separator+rowOrFill(right, k, rightWidth, rightFill))
 		}

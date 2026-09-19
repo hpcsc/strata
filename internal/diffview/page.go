@@ -10,6 +10,8 @@ import (
 type Options struct {
 	Width int
 	Split bool
+	// WholeFile shows the lines of the file that the patch leaves out.
+	WholeFile bool
 	// Find marks the text that matches it.
 	Find         search.Query
 	Theme        syntax.Theme
@@ -37,22 +39,32 @@ type Page struct {
 const minWidth = 24
 
 func Render(src Source, opts Options) Page {
-	r := newRenderer(src, max(opts.Width, minWidth), opts.Find, newPalette(opts.Theme, opts.ColorProfile))
+	width, palette := max(opts.Width, minWidth), newPalette(opts.Theme, opts.ColorProfile)
 	if summary := src.Patch.Summary(); summary != "" {
-		return Page{Lines: []string{r.note(summary)}}
+		return Page{Lines: []string{newRenderer(src, nil, width, opts.Find, palette).note(summary)}}
 	}
+	blocks, whole, note := hunkBlocks(src.Patch), false, ""
+	if opts.WholeFile {
+		if built, ok := wholeBlocks(src); ok {
+			blocks, whole = built, true
+		} else {
+			note = "the file is too big to show whole"
+		}
+	}
+	r := newRenderer(src, blocks, width, opts.Find, palette)
 	split := opts.Split && src.Patch.File.Status != diff.Added && src.Patch.File.Status != diff.Deleted
 	var page Page
-	for _, h := range src.Patch.Hunks {
-		page.Hunks = append(page.Hunks, len(page.Lines))
-		page.Lines = append(page.Lines, r.hunkHeader(h))
-		var rows []string
-		var matches []int
-		if split {
-			rows, matches = r.split(h)
-		} else {
-			rows, matches = r.unified(h)
+	if note != "" {
+		page.Lines = append(page.Lines, r.note(note))
+	}
+	for _, b := range blocks {
+		if b.hunk != nil {
+			page.Hunks = append(page.Hunks, len(page.Lines))
+			if !whole {
+				page.Lines = append(page.Lines, r.hunkHeader(*b.hunk))
+			}
 		}
+		rows, matches := r.rows(b.lines, split)
 		for _, m := range matches {
 			page.Matches = append(page.Matches, len(page.Lines)+m)
 		}

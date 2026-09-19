@@ -161,6 +161,105 @@ func TestRender(t *testing.T) {
 		})
 	})
 
+	t.Run("whole", func(t *testing.T) {
+		spansOf := func(lines ...string) [][]syntax.Span {
+			out := make([][]syntax.Span, len(lines))
+			for i, l := range lines {
+				out[i] = []syntax.Span{{Text: l}}
+			}
+			return out
+		}
+		middle := diff.Patch{
+			File: diff.File{Path: "price.go", Status: diff.Modified},
+			Hunks: []diff.Hunk{{
+				OldStart: 2, OldLines: 3, NewStart: 2, NewLines: 3, Section: "func total()",
+				Lines: []diff.Line{
+					{Kind: diff.Context, Text: "two", OldNumber: 2, NewNumber: 2},
+					{Kind: diff.Deletion, Text: "three", OldNumber: 3},
+					{Kind: diff.Addition, Text: "THREE", NewNumber: 3},
+					{Kind: diff.Context, Text: "four", OldNumber: 4, NewNumber: 4},
+				},
+			}},
+		}
+		wholeFile := diffview.Source{Patch: middle, After: spansOf("one", "two", "THREE", "four", "five", "six")}
+
+		t.Run("shows the lines before and after the hunk, and no hunk header", func(t *testing.T) {
+			page := diffview.Render(wholeFile, diffview.Options{Width: 60, WholeFile: true})
+
+			require.Equal(t, []string{
+				"1 1 │  one",
+				"2 2 │  two",
+				"3   │- three",
+				"  3 │+ THREE",
+				"4 4 │  four",
+				"5 5 │  five",
+				"6 6 │  six",
+			}, plain(page.Lines))
+		})
+
+		t.Run("records the row where each hunk starts, so the hunk keys jump to the change", func(t *testing.T) {
+			page := diffview.Render(wholeFile, diffview.Options{Width: 60, WholeFile: true})
+
+			require.Equal(t, []int{1}, page.Hunks)
+		})
+
+		t.Run("marks a match in a line that the patch leaves out", func(t *testing.T) {
+			page := diffview.Render(wholeFile, diffview.Options{Width: 60, WholeFile: true, Find: search.New("six")})
+
+			require.Equal(t, []int{6}, page.Matches)
+		})
+
+		t.Run("puts a line that neither side changes in both columns", func(t *testing.T) {
+			page := diffview.Render(wholeFile, diffview.Options{Width: 61, WholeFile: true, Split: true})
+
+			left, right, _ := strings.Cut(plain(page.Lines)[0], "│")
+			require.Equal(t, "1 one", strings.TrimSpace(left))
+			require.Equal(t, "1 one", strings.TrimSpace(right))
+		})
+
+		t.Run("makes the number column wide enough for the last line of the file", func(t *testing.T) {
+			lines := make([]string, 120)
+			for i := range lines {
+				lines[i] = fmt.Sprintf("line %d", i+1)
+			}
+			src := diffview.Source{Patch: middle, After: spansOf(lines...)}
+
+			page := diffview.Render(src, diffview.Options{Width: 60, WholeFile: true})
+
+			rows := plain(page.Lines)
+			require.Equal(t, "  1   1 │  line 1", rows[0])
+			require.Equal(t, "120 120 │  line 120", rows[len(rows)-1])
+		})
+
+		t.Run("keeps the hunks and says so when the text of the file is not loaded", func(t *testing.T) {
+			page := diffview.Render(diffview.Source{Patch: middle}, diffview.Options{Width: 60, WholeFile: true})
+
+			require.Equal(t, []string{
+				"  the file is too big to show whole",
+				"@@ -2,3 +2,3 @@ func total()",
+				"2 2 │  two",
+				"3   │- three",
+				"  3 │+ THREE",
+				"4 4 │  four",
+			}, plain(page.Lines))
+			require.Equal(t, []int{1}, page.Hunks)
+		})
+
+		t.Run("shows a deleted file, which has no line after the change", func(t *testing.T) {
+			patch := diff.Patch{File: diff.File{Path: "gone.go", Status: diff.Deleted}, Hunks: []diff.Hunk{{
+				OldStart: 1, OldLines: 2,
+				Lines: []diff.Line{
+					{Kind: diff.Deletion, Text: "one", OldNumber: 1},
+					{Kind: diff.Deletion, Text: "two", OldNumber: 2},
+				},
+			}}}
+
+			page := diffview.Render(diffview.Source{Patch: patch, Before: spansOf("one", "two")}, diffview.Options{Width: 60, WholeFile: true})
+
+			require.Equal(t, []string{"1   │- one", "2   │- two"}, plain(page.Lines))
+		})
+	})
+
 	t.Run("rows", func(t *testing.T) {
 		t.Run("every row fills the width exactly in both layouts", func(t *testing.T) {
 			patch := replaced("\tlabel := \"café\" // 価格", "\tlabel := \"thé\" // "+strings.Repeat("価格", 30))
