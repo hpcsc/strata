@@ -311,6 +311,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, m.stepBranch(-1)
 	case keymap.ToggleSplit:
 		m.diff.toggleSplit()
+	case keymap.ToggleWholeFile:
+		m.diff.toggleWholeFile()
 	case keymap.ToggleZoom:
 		m.zoomed = !m.zoomed
 		if m.zoomed {
@@ -912,6 +914,9 @@ func (m Model) diffTitle() string {
 	}
 	at, total := m.files.position()
 	title += fmt.Sprintf(" · %d/%d · %s", at, total, m.diff.position())
+	if m.diff.wholeFile {
+		title += " · whole"
+	}
 	if m.sources.Viewed.Has(f) {
 		title += " · ✓ viewed"
 	}
@@ -1008,7 +1013,7 @@ func (m Model) hints() string {
 	return joinHints(m.hint("scroll", keymap.DiffDown, keymap.DiffUp), m.hint("page", keymap.DiffHalfPageDown, keymap.DiffHalfPageUp),
 		m.hint("hunk", keymap.NextHunk, keymap.PreviousHunk), m.hint("file", keymap.NextFile, keymap.PreviousFile), m.hint("viewed", keymap.ToggleViewed),
 		m.hint("branch", keymap.PreviousBranch, keymap.NextBranch), m.hint("split", keymap.ToggleSplit),
-		m.hint("zoom", keymap.ToggleZoom), m.hint("keys", keymap.Help))
+		m.hint("whole", keymap.ToggleWholeFile), m.hint("zoom", keymap.ToggleZoom), m.hint("keys", keymap.Help))
 }
 
 func (m Model) planHints() string {

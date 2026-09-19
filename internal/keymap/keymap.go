@@ -59,6 +59,7 @@ const (
 	NextBranch
 	PreviousBranch
 	ToggleSplit
+	ToggleWholeFile
 	ToggleZoom
 	ToggleTree
 	ToggleViewed
@@ -118,6 +119,7 @@ var definitions = [actionCount]definition{
 	NextBranch:        {Anywhere, "next_branch", []string{"]"}, "next branch; the same file stays selected"},
 	PreviousBranch:    {Anywhere, "previous_branch", []string{"["}, "previous branch; the same file stays selected"},
 	ToggleSplit:       {Anywhere, "toggle_split", []string{"s"}, "side by side or unified diff"},
+	ToggleWholeFile:   {Anywhere, "toggle_whole_file", []string{"w"}, "the whole file or only the changed lines"},
 	ToggleZoom:        {Anywhere, "toggle_zoom", []string{"z"}, "diff on the full screen"},
 	ToggleTree:        {Anywhere, "toggle_tree", []string{"t"}, "files as a tree or as a list of paths"},
 	ToggleViewed:      {Anywhere, "toggle_viewed", []string{"v"}, "mark the file viewed, then go to the next file"},

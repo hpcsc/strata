@@ -45,6 +45,7 @@ func (m *memoryTree) Commits(_ context.Context, b stack.Branch) ([]stack.Commit,
 type memoryDiffs struct {
 	files         map[string][]diff.File
 	patches       map[string]diff.Patch
+	contents      map[string][2]string
 	failures      map[string]error
 	patchFailures map[string]error
 }
@@ -70,16 +71,24 @@ func (m memoryDiffs) Patch(_ context.Context, _, branch string, f diff.File) (di
 	}}}, nil
 }
 
-func (m memoryDiffs) Contents(context.Context, diff.File) (string, string, error) {
-	return "", "", nil
+func (m memoryDiffs) Contents(_ context.Context, f diff.File) (string, string, error) {
+	content := m.contents[f.Path]
+	return content[0], content[1], nil
 }
 
 type plainText struct {
 	theme syntax.Theme
 }
 
-func (plainText) Lines(string, string) [][]syntax.Span {
-	return nil
+func (plainText) Lines(_, content string) [][]syntax.Span {
+	if content == "" {
+		return nil
+	}
+	var out [][]syntax.Span
+	for _, line := range strings.Split(strings.TrimSuffix(content, "\n"), "\n") {
+		out = append(out, []syntax.Span{{Text: line}})
+	}
+	return out
 }
 
 func (p plainText) Theme() syntax.Theme {
@@ -248,10 +257,11 @@ func TestModel(t *testing.T) {
 		return m
 	}
 	type modelSources struct {
-		tree    stack.Tree
-		files   map[string][]diff.File
-		patches map[string]diff.Patch
-		viewed  memoryViewed
+		tree     stack.Tree
+		files    map[string][]diff.File
+		patches  map[string]diff.Patch
+		contents map[string][2]string
+		viewed   memoryViewed
 	}
 	nestedFiles := func(t *testing.T) modelSources {
 		t.Helper()
@@ -317,7 +327,7 @@ func TestModel(t *testing.T) {
 	startWithOptions := func(src modelSources, opts ui.Options) tea.Model {
 		m := ui.New(context.Background(), src.tree, ui.Sources{
 			Tree:        &memoryTree{tree: src.tree},
-			Diffs:       memoryDiffs{files: src.files, patches: src.patches},
+			Diffs:       memoryDiffs{files: src.files, patches: src.patches, contents: src.contents},
 			Highlighter: plainText{},
 			Viewed:      src.viewed,
 		}, opts)
@@ -921,7 +931,9 @@ func TestModel(t *testing.T) {
 		})
 
 		t.Run("the keys screen lists enter and esc for the plan", func(t *testing.T) {
-			view := screen(press(startWithSync(&memorySync{plan: movable()}), "?"))
+			m, _ := startWithSync(&memorySync{plan: movable()}).Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+
+			view := screen(press(m, "?"))
 
 			require.Contains(t, view, "move the stack of the selected branch")
 			require.Contains(t, view, "close the plan")
@@ -1080,6 +1092,66 @@ func TestModel(t *testing.T) {
 			backgrounds := regexp.MustCompile(`48;2;(\d+);(\d+);(\d+)`).FindAllStringSubmatch(view[:at], -1)
 			require.NotEmpty(t, backgrounds)
 			require.Subset(t, []string{"0", "95", "135", "175", "215", "255"}, backgrounds[len(backgrounds)-1][1:])
+		})
+	})
+
+	t.Run("whole file", func(t *testing.T) {
+		longFile := func(t *testing.T) modelSources {
+			t.Helper()
+			var before, after strings.Builder
+			for i := 1; i <= 200; i++ {
+				fmt.Fprintf(&before, "line %d\n", i)
+				if i == 101 {
+					after.WriteString("LINE 101\n")
+					continue
+				}
+				fmt.Fprintf(&after, "line %d\n", i)
+			}
+			tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "long", Parent: "origin/main", Base: "b0"}}}
+			return modelSources{tree: tree, viewed: memoryViewed{},
+				files: map[string][]diff.File{"long": {file("order.go")}},
+				patches: map[string]diff.Patch{"order.go": {Hunks: []diff.Hunk{{
+					OldStart: 100, OldLines: 3, NewStart: 100, NewLines: 3,
+					Lines: []diff.Line{
+						{Kind: diff.Context, Text: "line 100", OldNumber: 100, NewNumber: 100},
+						{Kind: diff.Deletion, Text: "line 101", OldNumber: 101},
+						{Kind: diff.Addition, Text: "LINE 101", NewNumber: 101},
+						{Kind: diff.Context, Text: "line 102", OldNumber: 102, NewNumber: 102},
+					},
+				}}}},
+				contents: map[string][2]string{"order.go": {before.String(), after.String()}},
+			}
+		}
+
+		t.Run("w shows the lines of the file that the diff leaves out", func(t *testing.T) {
+			m := press(startWith(longFile(t)), "enter", "enter")
+
+			require.NotContains(t, screen(m), "line 110")
+			require.Contains(t, screen(press(m, "w")), "line 110")
+		})
+
+		t.Run("w keeps the hunk at the top of the panel, and the lines before it stay above", func(t *testing.T) {
+			view := screen(press(startWith(longFile(t)), "enter", "enter", "w"))
+
+			require.Contains(t, view, "LINE 101")
+			require.NotContains(t, view, "line 20")
+		})
+
+		t.Run("the title says whole until w shows the hunks again", func(t *testing.T) {
+			m := press(startWith(longFile(t)), "enter", "enter", "w")
+
+			require.Regexp(t, `order\.go · 1/1 · \S+ · whole`, screen(m))
+			require.NotRegexp(t, `order\.go · 1/1 · \S+ · whole`, screen(press(m, "w")))
+		})
+
+		t.Run("w keeps the hunks and says why when the file is too big to load", func(t *testing.T) {
+			src := longFile(t)
+			src.contents = nil
+
+			view := screen(press(startWith(src), "enter", "enter", "w"))
+
+			require.Contains(t, view, "the file is too big to show whole")
+			require.Contains(t, view, "@@ -100,3 +100,3 @@")
 		})
 	})
 

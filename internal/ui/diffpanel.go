@@ -21,6 +21,7 @@ type diffPanel struct {
 	height    int
 	find      search.Query
 	split     bool
+	wholeFile bool
 	theme     syntax.Theme
 	profile   colorprofile.Profile
 	// match is the index in page.Matches of the match that n and N last
@@ -60,15 +61,22 @@ func (p *diffPanel) toggleSplit() {
 	p.render()
 }
 
+func (p *diffPanel) toggleWholeFile() {
+	at := p.hunkAtTop()
+	p.wholeFile = !p.wholeFile
+	p.render()
+	p.toHunk(at)
+}
+
 func (p *diffPanel) render() {
 	if !p.hasSource || p.width <= 0 {
 		return
 	}
-	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%s\x00%d", p.key, p.width, p.split, p.find, p.profile)
+	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%t\x00%s\x00%d", p.key, p.width, p.split, p.wholeFile, p.find, p.profile)
 	if pageKey == p.pageKey {
 		return
 	}
-	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: p.split, Find: p.find, Theme: p.theme, ColorProfile: p.profile}), pageKey
+	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: p.split, WholeFile: p.wholeFile, Find: p.find, Theme: p.theme, ColorProfile: p.profile}), pageKey
 	p.scroll(0)
 }
 
@@ -145,6 +153,27 @@ func (p *diffPanel) toTop() {
 
 func (p *diffPanel) toBottom() {
 	p.scroll(len(p.page.Lines))
+}
+
+// hunkAtTop gives the index in page.Hunks of the last hunk at or above the
+// top of the panel, or -1.
+func (p diffPanel) hunkAtTop() int {
+	at := -1
+	for i, start := range p.page.Hunks {
+		if start > p.offset {
+			break
+		}
+		at = i
+	}
+	return at
+}
+
+func (p *diffPanel) toHunk(i int) {
+	if i < 0 || i >= len(p.page.Hunks) {
+		return
+	}
+	p.offset = p.page.Hunks[i]
+	p.scroll(0)
 }
 
 func (p *diffPanel) nextHunk() {

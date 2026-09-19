@@ -141,8 +141,11 @@ Each command installs the latest build of its channel when this build is a diffe
   when you have viewed every file in it. A folder that you unfold with `o` stays open. `t` shows the files
   as a list of paths.
 - The **Diff** panel shows the selected file, side by side or unified, with syntax colours and marks on the
-  changed words. When the Stack panel has the focus, this panel shows the commits of the branch. When a
-  folder is selected, it shows the files in the folder and their line counts.
+  changed words. `w` adds the lines that the diff leaves out, so you read the change in the code around it.
+  The hunk that was at the top of the panel stays there, and `n` and `p` still go from change to change. A
+  file over 1 MB keeps only its changed lines, and the panel says so. When the Stack panel has the focus,
+  this panel shows the commits of the branch. When a folder is selected, it shows the files in the folder
+  and their line counts.
 
 ## Keys
 
@@ -153,6 +156,7 @@ These are the default keys. The [config file](#config-file) can change them.
 | Anywhere | `[` `]` | Go to the previous or next branch. The same file stays selected when that branch changes it. |
 | | `tab` | Go to the next panel. `shift+tab` goes to the previous panel. |
 | | `s` | Show the diff side by side or unified. |
+| | `w` | Show the whole file, or only the changed lines. |
 | | `z` | Show the diff on the full screen. |
 | | `v` | Mark the file viewed and go to the next file. |
 | | `t` | Show the files as a tree or as a list of paths. |
