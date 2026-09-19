@@ -16,6 +16,7 @@ import (
 type Config struct {
 	Theme       string
 	Split       bool
+	WholeFile   bool
 	AutoRefresh bool
 	Keys        keymap.Keymap
 }
@@ -53,6 +54,7 @@ func Load(path string) (Config, error) {
 type file struct {
 	Theme       *string `toml:"theme"`
 	Split       *bool   `toml:"split"`
+	WholeFile   *bool   `toml:"whole_file"`
 	AutoRefresh *bool   `toml:"auto_refresh"`
 	Keys        any     `toml:"keys"`
 }
@@ -69,6 +71,9 @@ func Parse(text string) (Config, error) {
 	}
 	if f.Split != nil {
 		c.Split = *f.Split
+	}
+	if f.WholeFile != nil {
+		c.WholeFile = *f.WholeFile
 	}
 	if f.AutoRefresh != nil {
 		c.AutoRefresh = *f.AutoRefresh

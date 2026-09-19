@@ -284,6 +284,33 @@ func TestModel(t *testing.T) {
 		src.patches = map[string]diff.Patch{"common/modules/a/one.go": {Hunks: hunks}}
 		return src
 	}
+	longFile := func(t *testing.T) modelSources {
+		t.Helper()
+		var before, after strings.Builder
+		for i := 1; i <= 200; i++ {
+			fmt.Fprintf(&before, "line %d\n", i)
+			if i == 101 {
+				after.WriteString("LINE 101\n")
+				continue
+			}
+			fmt.Fprintf(&after, "line %d\n", i)
+		}
+		tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "long", Parent: "origin/main", Base: "b0"}}}
+		return modelSources{tree: tree, viewed: memoryViewed{},
+			files: map[string][]diff.File{"long": {file("order.go")}},
+			patches: map[string]diff.Patch{"order.go": {Hunks: []diff.Hunk{{
+				OldStart: 100, OldLines: 3, NewStart: 100, NewLines: 3,
+				Lines: []diff.Line{
+					{Kind: diff.Context, Text: "line 100", OldNumber: 100, NewNumber: 100},
+					{Kind: diff.Deletion, Text: "line 101", OldNumber: 101},
+					{Kind: diff.Addition, Text: "LINE 101", NewNumber: 101},
+					{Kind: diff.Context, Text: "line 102", OldNumber: 102, NewNumber: 102},
+				},
+			}}}},
+			contents: map[string][2]string{"order.go": {before.String(), after.String()}},
+		}
+	}
+
 	twoBranches := func(t *testing.T) modelSources {
 		t.Helper()
 		tree := stack.Tree{Trunk: "origin/main", Current: "first", Branches: []stack.Branch{
@@ -1096,33 +1123,6 @@ func TestModel(t *testing.T) {
 	})
 
 	t.Run("whole file", func(t *testing.T) {
-		longFile := func(t *testing.T) modelSources {
-			t.Helper()
-			var before, after strings.Builder
-			for i := 1; i <= 200; i++ {
-				fmt.Fprintf(&before, "line %d\n", i)
-				if i == 101 {
-					after.WriteString("LINE 101\n")
-					continue
-				}
-				fmt.Fprintf(&after, "line %d\n", i)
-			}
-			tree := stack.Tree{Trunk: "origin/main", Branches: []stack.Branch{{Name: "long", Parent: "origin/main", Base: "b0"}}}
-			return modelSources{tree: tree, viewed: memoryViewed{},
-				files: map[string][]diff.File{"long": {file("order.go")}},
-				patches: map[string]diff.Patch{"order.go": {Hunks: []diff.Hunk{{
-					OldStart: 100, OldLines: 3, NewStart: 100, NewLines: 3,
-					Lines: []diff.Line{
-						{Kind: diff.Context, Text: "line 100", OldNumber: 100, NewNumber: 100},
-						{Kind: diff.Deletion, Text: "line 101", OldNumber: 101},
-						{Kind: diff.Addition, Text: "LINE 101", NewNumber: 101},
-						{Kind: diff.Context, Text: "line 102", OldNumber: 102, NewNumber: 102},
-					},
-				}}}},
-				contents: map[string][2]string{"order.go": {before.String(), after.String()}},
-			}
-		}
-
 		t.Run("w shows the lines of the file that the diff leaves out", func(t *testing.T) {
 			m := press(startWith(longFile(t)), "enter", "enter")
 
@@ -1219,6 +1219,16 @@ func TestModel(t *testing.T) {
 
 			require.NotNil(t, cmd)
 			require.Equal(t, tea.QuitMsg{}, cmd())
+		})
+
+		t.Run("whole on starts with the whole file that w hides", func(t *testing.T) {
+			opts := defaults()
+			opts.WholeFile = true
+
+			m := press(startWithOptions(longFile(t), opts), "enter", "enter")
+
+			require.Contains(t, screen(m), "line 20")
+			require.NotContains(t, screen(press(m, "w")), "line 20")
 		})
 
 		t.Run("split off starts with the unified diff that s shows", func(t *testing.T) {

@@ -79,8 +79,9 @@ type branchesDeleted struct {
 }
 
 type Options struct {
-	Keys  keymap.Keymap
-	Split bool
+	Keys      keymap.Keymap
+	Split     bool
+	WholeFile bool
 }
 
 type Model struct {
@@ -126,7 +127,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources, opts Options) Mo
 		cache:   newCache(ctx, sources),
 		stack:   newStackPanel(tree),
 		files:   newFilesPanel(sources.Viewed),
-		diff:    diffPanel{theme: sources.Highlighter.Theme(), split: opts.Split},
+		diff:    diffPanel{theme: sources.Highlighter.Theme(), split: opts.Split, wholeFile: opts.WholeFile},
 		refs:    tree.Refs,
 	}
 	m.initial = m.showSelection()

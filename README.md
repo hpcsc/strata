@@ -226,6 +226,7 @@ not exist, strata uses its defaults.
 ```toml
 theme = "github"
 split = false
+whole_file = true
 auto_refresh = true
 
 [keys]
@@ -240,6 +241,7 @@ previous_file = "H"
 
 - `theme` is the chroma style of the code and the diff. `--theme` overrides it.
 - `split = false` starts the diff unified, not side by side.
+- `whole_file = true` starts the diff with the whole file, not only the changed lines. `w` toggles it.
 - `auto_refresh = true` makes strata read the branches again when git changes them. See
   [Refresh](#refresh). It is off by default.
 - An action takes one key, a list of keys, or `[]` for no key. The keys replace the default keys of the

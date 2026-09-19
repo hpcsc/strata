@@ -30,10 +30,10 @@ func TestConfig(t *testing.T) {
 		})
 
 		t.Run("takes the options from the file", func(t *testing.T) {
-			c, err := config.Parse("theme = \"github\"\nsplit = false\nauto_refresh = true\n")
+			c, err := config.Parse("theme = \"github\"\nsplit = false\nwhole_file = true\nauto_refresh = true\n")
 
 			want := config.Default()
-			want.Theme, want.Split, want.AutoRefresh = "github", false, true
+			want.Theme, want.Split, want.WholeFile, want.AutoRefresh = "github", false, true, true
 			require.NoError(t, err)
 			require.Equal(t, want, c)
 		})

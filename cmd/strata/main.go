@@ -166,7 +166,7 @@ func run(ctx context.Context, cmd *cli.Command, syncErr error) error {
 		Viewed:      marks,
 		Sync:        sync,
 		Deleter:     deleter,
-	}, ui.Options{Keys: settings.Keys, Split: settings.Split})
+	}, ui.Options{Keys: settings.Keys, Split: settings.Split, WholeFile: settings.WholeFile})
 	program := tea.NewProgram(model, tea.WithContext(ctx), tea.WithColorProfile(colorProfile()))
 	if autoRefresh {
 		watchCtx, stopWatch := context.WithCancel(ctx)
