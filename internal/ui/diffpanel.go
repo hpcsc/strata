@@ -20,6 +20,7 @@ type diffPanel struct {
 	width     int
 	height    int
 	find      search.Query
+	split     bool
 	theme     syntax.Theme
 	profile   colorprofile.Profile
 	// match is the index in page.Matches of the match that n and N last
@@ -29,12 +30,12 @@ type diffPanel struct {
 
 // show displays the source that key names; the scroll position resets only
 // when key changes.
-func (p *diffPanel) show(key string, src diffview.Source, split bool) {
+func (p *diffPanel) show(key string, src diffview.Source) {
 	if key != p.key {
 		p.offset, p.match = 0, -1
 	}
 	p.key, p.source, p.hasSource, p.notice = key, src, true, ""
-	p.render(split)
+	p.render()
 }
 
 func (p *diffPanel) showNotice(key, notice string) {
@@ -44,33 +45,38 @@ func (p *diffPanel) showNotice(key, notice string) {
 	p.key, p.hasSource, p.notice, p.page, p.pageKey = key, false, notice, diffview.Page{}, ""
 }
 
-func (p *diffPanel) setSize(width, height int, split bool) {
+func (p *diffPanel) setSize(width, height int) {
 	p.width, p.height = width, height
-	p.render(split)
+	p.render()
 }
 
-func (p *diffPanel) setColorProfile(profile colorprofile.Profile, split bool) {
+func (p *diffPanel) setColorProfile(profile colorprofile.Profile) {
 	p.profile = profile
-	p.render(split)
+	p.render()
 }
 
-func (p *diffPanel) render(split bool) {
+func (p *diffPanel) toggleSplit() {
+	p.split = !p.split
+	p.render()
+}
+
+func (p *diffPanel) render() {
 	if !p.hasSource || p.width <= 0 {
 		return
 	}
-	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%s\x00%d", p.key, p.width, split, p.find, p.profile)
+	pageKey := fmt.Sprintf("%s\x00%d\x00%t\x00%s\x00%d", p.key, p.width, p.split, p.find, p.profile)
 	if pageKey == p.pageKey {
 		return
 	}
-	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: split, Find: p.find, Theme: p.theme, ColorProfile: p.profile}), pageKey
+	p.page, p.pageKey = diffview.Render(p.source, diffview.Options{Width: p.width, Split: p.split, Find: p.find, Theme: p.theme, ColorProfile: p.profile}), pageKey
 	p.scroll(0)
 }
 
 // setFind marks the text that matches find and moves to the first match at
 // or below the top of the panel.
-func (p *diffPanel) setFind(find search.Query, split bool) {
+func (p *diffPanel) setFind(find search.Query) {
 	p.find, p.match = find, -1
-	p.render(split)
+	p.render()
 	if find.Empty() || len(p.page.Matches) == 0 {
 		return
 	}

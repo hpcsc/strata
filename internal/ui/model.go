@@ -92,7 +92,6 @@ type Model struct {
 	files       filesPanel
 	diff        diffPanel
 	focus       focus
-	split       bool
 	zoomed      bool
 	help        bool
 	width       int
@@ -126,8 +125,7 @@ func New(ctx context.Context, tree stack.Tree, sources Sources, opts Options) Mo
 		cache:   newCache(ctx, sources),
 		stack:   newStackPanel(tree),
 		files:   newFilesPanel(sources.Viewed),
-		diff:    diffPanel{theme: sources.Highlighter.Theme()},
-		split:   opts.Split,
+		diff:    diffPanel{theme: sources.Highlighter.Theme(), split: opts.Split},
 		refs:    tree.Refs,
 	}
 	m.initial = m.showSelection()
@@ -156,7 +154,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case tea.ColorProfileMsg:
-		m.diff.setColorProfile(msg.Profile, m.split)
+		m.diff.setColorProfile(msg.Profile)
 		return m, nil
 	case treeLoaded:
 		if msg.err != nil {
@@ -312,8 +310,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case keymap.PreviousBranch, keymap.StackUp:
 		return m, m.stepBranch(-1)
 	case keymap.ToggleSplit:
-		m.split = !m.split
-		m.diff.render(m.split)
+		m.diff.toggleSplit()
 	case keymap.ToggleZoom:
 		m.zoomed = !m.zoomed
 		if m.zoomed {
@@ -501,7 +498,7 @@ func (m *Model) setQuery(target focus, text string) tea.Cmd {
 			return m.fileMoved()
 		}
 	default:
-		m.diff.setFind(query, m.split)
+		m.diff.setFind(query)
 	}
 	return nil
 }
@@ -771,7 +768,7 @@ func (m *Model) showSelection() tea.Cmd {
 	case result.err != nil:
 		m.diff.showNotice(fileKey(b, f), result.err.Error())
 	default:
-		m.diff.show(fileKey(b, f), result.source, m.split)
+		m.diff.show(fileKey(b, f), result.source)
 	}
 	return tea.Batch(cmds...)
 }
@@ -782,7 +779,7 @@ func (m *Model) layout() {
 	}
 	body := m.height - 1
 	if m.zoomed {
-		m.diff.setSize(m.width-2, body-2, m.split)
+		m.diff.setSize(m.width-2, body-2)
 		return
 	}
 	m.stackHeight = min(max(len(m.stack.tree.Branches)+3, 4), max(4, body/3))
@@ -793,7 +790,7 @@ func (m *Model) layout() {
 	bottom := body - m.stackHeight
 	m.stack.setHeight(m.stackHeight - 2)
 	m.files.setHeight(bottom - 2)
-	m.diff.setSize(m.width-m.filesWidth-2, bottom-2, m.split)
+	m.diff.setSize(m.width-m.filesWidth-2, bottom-2)
 }
 
 func (m Model) View() tea.View {
