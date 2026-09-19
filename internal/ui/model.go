@@ -94,6 +94,7 @@ type Model struct {
 	focus       focus
 	zoomed      bool
 	help        bool
+	helpOffset  int
 	width       int
 	height      int
 	stackHeight int
@@ -270,8 +271,7 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.help {
-		m.help = false
-		return m, nil
+		return m.helpKey(msg.String()), nil
 	}
 	m.status, m.notice = "", ""
 	if m.prompt.open {
@@ -294,7 +294,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case keymap.Quit:
 		return m, tea.Quit
 	case keymap.Help:
-		m.help = true
+		m.help, m.helpOffset = true, 0
 	case keymap.StartSearch:
 		m.prompt.start(m.focus, m.query(m.focus).String())
 	case keymap.NextPanel:
@@ -412,6 +412,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 var panelTables = [focusCount]keymap.Table{focusStack: keymap.InStack, focusFiles: keymap.InFiles, focusDiff: keymap.InDiff}
 
 func (m Model) action(key string) keymap.Action {
+	if m.help {
+		return m.keys.Action(keymap.InDiff, key)
+	}
 	var tables []keymap.Table
 	if m.stack.plan != nil {
 		tables = append(tables, keymap.InPlan)
@@ -806,7 +809,12 @@ func (m Model) screen() string {
 		return ""
 	}
 	if m.help {
-		return box("Keys · any key closes", m.keyLines(m.width-2, m.height-2), m.width, m.height, true)
+		lines, rows := m.keyRows()
+		if len(lines) <= rows {
+			return box(joinHints("Keys", "any key closes"), lines, m.width, m.height, true)
+		}
+		title := joinHints("Keys", m.hint("scroll", keymap.DiffDown, keymap.DiffUp), "any other key closes")
+		return box(title, window(lines, min(m.helpOffset, len(lines)-rows), rows), m.width, m.height, true)
 	}
 	footer := m.footer()
 	if m.zoomed {
@@ -1100,6 +1108,43 @@ func (m Model) keySections() []keySection {
 		keySection{"Files", keymap.InFiles.Actions()},
 		keySection{"Diff", keymap.InDiff.Actions()},
 		keySection{"While a search is on", keymap.InSearch.Actions()})
+}
+
+func (m Model) helpKey(key string) Model {
+	lines, rows := m.keyRows()
+	hidden := len(lines) - rows
+	if hidden <= 0 {
+		m.help = false
+		return m
+	}
+	switch m.action(key) {
+	case keymap.DiffDown:
+		m.helpOffset++
+	case keymap.DiffUp:
+		m.helpOffset--
+	case keymap.DiffHalfPageDown:
+		m.helpOffset += rows / 2
+	case keymap.DiffHalfPageUp:
+		m.helpOffset -= rows / 2
+	case keymap.DiffPageDown:
+		m.helpOffset += rows
+	case keymap.DiffPageUp:
+		m.helpOffset -= rows
+	case keymap.DiffTop:
+		m.helpOffset = 0
+	case keymap.DiffBottom:
+		m.helpOffset = hidden
+	default:
+		m.help = false
+		return m
+	}
+	m.helpOffset = max(0, min(m.helpOffset, hidden))
+	return m
+}
+
+func (m Model) keyRows() (lines []string, height int) {
+	height = m.height - 2
+	return m.keyLines(m.width-2, height), height
 }
 
 const columnGap = "   "

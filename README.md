@@ -163,7 +163,7 @@ These are the default keys. The [config file](#config-file) can change them.
 | | `/` | Search the panel that has the focus. See [Search](#search). |
 | | `r` | Read the branches again. See [Refresh](#refresh). |
 | | `S` | Get the trunk from the remote and show the plan of a sync. See [Sync](#sync). |
-| | `?` | Show all keys. |
+| | `?` | Show all keys. The keys of the Diff panel scroll them when they do not all fit. |
 | | `Q` | Quit. |
 | Stack | `j` `k` `g` `G` | Move between branches. |
 | | `enter` | Go to the files of the branch. |

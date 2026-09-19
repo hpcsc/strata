@@ -1248,6 +1248,22 @@ func TestModel(t *testing.T) {
 			require.Contains(t, view, "mark the file viewed, then go to the next file")
 		})
 
+		t.Run("scrolls to the keys that do not fit, and any other key closes", func(t *testing.T) {
+			opened := press(startWith(threeHunks(t)), "?")
+
+			require.NotContains(t, screen(opened), "previous match")
+			require.Contains(t, screen(press(opened, "G")), "previous match")
+			require.NotContains(t, screen(press(opened, "x")), "Keys ·")
+		})
+
+		t.Run("says that the keys scroll only while some of them do not fit", func(t *testing.T) {
+			short := startWith(threeHunks(t))
+			tall, _ := short.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+
+			require.Contains(t, screen(press(short, "?")), "Keys · j/k scroll · any other key closes")
+			require.Contains(t, screen(press(tall, "?")), "Keys · any key closes")
+		})
+
 		t.Run("draws on a screen too narrow for any column", func(t *testing.T) {
 			for width := 1; width <= 12; width++ {
 				m, _ := startWith(threeHunks(t)).Update(tea.WindowSizeMsg{Width: width, Height: 10})
