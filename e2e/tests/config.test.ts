@@ -51,7 +51,9 @@ describe('the config file', () => {
   it('auto_refresh = true shows a new commit on the checked-out branch with no key press', async () => {
     const repo = ordersRepo()
     const strata = await openStrata(repo.dir, [], { XDG_CONFIG_HOME: configHome('auto_refresh = true\n') })
-    await strata.waitForText('Branch · orders-handler')
+    // strata reads the commits of the branch after the first paint, so a commit that lands before that
+    // read is in the list without a refresh
+    await strata.waitForText('Test the handler')
 
     repo.commit('orders/reasons.go', 'package orders\n', 'Name the cancel reasons')
 
@@ -62,7 +64,7 @@ describe('the config file', () => {
   it('without auto_refresh, a new commit shows only after r', async () => {
     const repo = ordersRepo()
     const strata = await openStrata(repo.dir)
-    await strata.waitForText('Branch · orders-handler')
+    await strata.waitForText('Test the handler')
 
     repo.commit('orders/reasons.go', 'package orders\n', 'Name the cancel reasons')
     await new Promise((resolve) => setTimeout(resolve, 1500))
